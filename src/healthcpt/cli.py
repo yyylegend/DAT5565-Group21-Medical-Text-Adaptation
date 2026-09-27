@@ -33,7 +33,7 @@ def main() -> None:
     corpus_parser.add_argument("output_dir", type=Path, help="New output folder, usually data/processed/cpt-medical-v3")
     corpus_parser.add_argument("--medquad-cpt-limit", type=int, default=6000)
     corpus_parser.add_argument("--chunk-words", type=int, default=200)
-    cpt_parser = commands.add_parser("cpt-pilot", help="Run a bounded GPU CPT pilot")
+    cpt_parser = commands.add_parser("cpt-pilot", help="Run GPU continued pretraining")
     cpt_parser.add_argument("train_path", type=Path)
     cpt_parser.add_argument("validation_path", type=Path)
     cpt_parser.add_argument("output_dir", type=Path)
@@ -45,6 +45,9 @@ def main() -> None:
     cpt_parser.add_argument("--epochs", type=int, default=1)
     cpt_parser.add_argument("--lora-rank", type=int, default=4)
     cpt_parser.add_argument("--learning-rate", type=float, default=1e-4)
+    cpt_parser.add_argument("--warmup-ratio", type=float, default=0.05)
+    cpt_parser.add_argument("--minimum-learning-rate-ratio", type=float, default=0.1)
+    cpt_parser.add_argument("--checkpoint-steps", type=int, default=2000)
     args = parser.parse_args()
 
     if args.command == "audit-medquad":
@@ -85,6 +88,9 @@ def main() -> None:
             epochs=args.epochs,
             lora_rank=args.lora_rank,
             learning_rate=args.learning_rate,
+            warmup_ratio=args.warmup_ratio,
+            minimum_learning_rate_ratio=args.minimum_learning_rate_ratio,
+            checkpoint_steps=args.checkpoint_steps,
         )
     print(json.dumps(result, indent=2))
 

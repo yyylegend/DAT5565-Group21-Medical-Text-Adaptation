@@ -33,6 +33,13 @@ Python 包只保留当前工作流需要的脚本：
 
 当前锁定环境使用 Python 3.11/3.12、TensorFlow 2.21、Keras 3.15 和 KerasHub 0.32。请选择干净的 Linux GPU 镜像，再用 `uv sync --locked` 安装项目依赖。Python 3.8 和 TensorFlow 1.x 环境不兼容本项目。服务器还需要兼容的 NVIDIA 驱动。具体要求可查 [TensorFlow 安装指南](https://www.tensorflow.org/install/pip)。
 
+KerasHub 会在第一次加载时下载模型预设。训练前把 `KAGGLEHUB_CACHE` 指向服务器的持久存储，避免实例重启后重新下载：
+
+```bash
+mkdir -p /path/to/persistent-storage/kagglehub
+export KAGGLEHUB_CACHE=/path/to/persistent-storage/kagglehub
+```
+
 请按 [`uv` 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/)安装 `uv`。
 
 ## 获取项目并检查 GPU
@@ -123,7 +130,7 @@ uv run healthcpt cpt-pilot \
 
 脚本会先打印训练样本数和每轮步数。训练时，Keras 会显示轮数、当前步数、预计剩余时间（ETA）和训练损失；每轮验证结束后显示验证损失。ETA 根据当前批次速度估算，训练过程中可能变化。这些损失衡量语言模型训练目标，不代表问答质量。
 
-脚本还会每训练 100 步向 `<output_dir>/tensorboard` 写入一次 TensorBoard 标量，包括训练损失和每秒步数；验证损失会在验证结束后写入。ETA 仍看终端进度条。在服务器的另一个终端中启动全量训练的 TensorBoard：
+脚本还会每训练 100 步向 `<output_dir>/tensorboard` 写入一次 TensorBoard 标量，包括训练损失、学习率和每秒步数；验证损失会在验证结束后写入。ETA 仍看终端进度条。在服务器的另一个终端中启动全量训练的 TensorBoard：
 
 ```bash
 uv run tensorboard \
@@ -135,7 +142,7 @@ uv run tensorboard \
 
 KerasHub 0.32 提供 `qwen3_5_2b_base` preset 和 Qwen3.5 模型类，但本项目还没有在目标服务器上成功运行过这条路径。先把它当作试跑：确认模型加载、LoRA 作用层、显存占用和 adapter 保存后，再增加样本量。SFT 训练命令还没有实现。
 
-小规模试跑成功后，可对当前 v3 数据集完整训练一轮（24,240 条训练文本片段、1,645 条验证文本片段）：
+小规模试跑成功后，可对当前 v3 数据集完整训练一轮（24,240 条训练文本片段、1,645 条验证文本片段）。参数采用 5% 线性 warmup、余弦衰减到最高学习率的 10%，每 2,000 步保存一次检查点：
 
 ```bash
 uv run healthcpt cpt-pilot \
@@ -144,10 +151,14 @@ uv run healthcpt cpt-pilot \
   runs/qwen3_5_2b_cpt_full_1epoch \
   --preset qwen3_5_2b_base \
   --limit-train 24240 --limit-validation 1645 \
-  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
+  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8 \
+  --learning-rate 1e-4 --warmup-ratio 0.05 \
+  --minimum-learning-rate-ratio 0.1 --checkpoint-steps 2000
 ```
 
-如果显存不足，可先降低序列长度或 batch size。训练完成后，脚本会把 LoRA adapter 和 `run.json` 写入指定目录。当前没有中途恢复训练的 checkpoint；云服务器若使用临时存储，请选持久化磁盘，并及时备份结果。
+检查点保存在持久盘的 `<output_dir>/checkpoint` 下；每份检查点包含完整模型和优化器状态，可能占用数 GB。LoRA adapter 和 `run.json` 成功保存后，脚本会清理检查点。训练中断后，用相同输出目录和相同参数重新运行命令，会从最近的检查点恢复，并跳过已完成的训练批次。训练完成前不要删除 checkpoint 目录。
+
+如果显存不足，可先降低序列长度或 batch size。训练完成后，脚本会把 LoRA adapter 和 `run.json` 写入指定目录。模型缓存、检查点和最终 adapter 都应放在持久盘。
 
 `data/` 和 `runs/` 不纳入 Git。第一次 CPT 试跑至少要把 `data/processed/cpt-medical-v3/cpt_train.jsonl` 和 `cpt_validation.jsonl` 传到项目目录下对应的位置。原始压缩包、完整处理数据、模型缓存和运行结果也应保存在持久盘，或切换机器时单独传输。不要把模型权重或数据集提交到代码仓库。
 

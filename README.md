@@ -33,6 +33,13 @@ The Python package keeps only the scripts needed by this workflow:
 
 The lock file currently resolves Python 3.11/3.12, TensorFlow 2.21, Keras 3.15, and KerasHub 0.32. Use a clean Linux GPU image and let `uv sync --locked` install this environment. Python 3.8 and TensorFlow 1.x environments are incompatible with this project. The server still needs a compatible NVIDIA driver. See the [TensorFlow installation guide](https://www.tensorflow.org/install/pip).
 
+KerasHub downloads the model preset on its first load. Point `KAGGLEHUB_CACHE` to persistent server storage before training so the model does not need to be downloaded again after an instance restart:
+
+```bash
+mkdir -p /path/to/persistent-storage/kagglehub
+export KAGGLEHUB_CACHE=/path/to/persistent-storage/kagglehub
+```
+
 Install `uv` using the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Set up the project
@@ -123,7 +130,7 @@ uv run healthcpt cpt-pilot \
 
 The script prints the number of examples and steps before loading the model. During training, Keras shows the epoch and step progress, estimated time remaining (ETA), and training loss; validation loss appears after each validation pass. The ETA is based on observed batch speed and may change during the run. These losses measure the language-modeling objective, not answer quality.
 
-The script also writes TensorBoard scalars every 100 training steps under `<output_dir>/tensorboard`, including training loss and steps per second; validation loss is written after validation. The terminal progress bar remains the place to see ETA. In a second server terminal, start TensorBoard for the full run with:
+The script also writes TensorBoard scalars every 100 training steps under `<output_dir>/tensorboard`, including training loss, learning rate, and steps per second; validation loss is written after validation. The terminal progress bar remains the place to see ETA. In a second server terminal, start TensorBoard for the full run with:
 
 ```bash
 uv run tensorboard \
@@ -135,7 +142,7 @@ Open the dashboard through an SSH tunnel or the server provider's port-forwardin
 
 KerasHub 0.32 includes the `qwen3_5_2b_base` preset and Qwen3.5 model classes, but this project's path has not yet been run successfully on the target server. Treat this as a pilot only. Check the model load, LoRA target layers, memory use, and saved adapter before increasing the sample limits. The SFT training command is not implemented yet.
 
-After the pilot succeeds, run one full pass over the current v3 dataset (24,240 training chunks and 1,645 validation chunks):
+After the pilot succeeds, run one full pass over the current v3 dataset (24,240 training chunks and 1,645 validation chunks). This uses a 5% linear warmup, cosine decay to 10% of the peak learning rate, and a checkpoint every 2,000 steps:
 
 ```bash
 uv run healthcpt cpt-pilot \
@@ -144,10 +151,14 @@ uv run healthcpt cpt-pilot \
   runs/qwen3_5_2b_cpt_full_1epoch \
   --preset qwen3_5_2b_base \
   --limit-train 24240 --limit-validation 1645 \
-  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
+  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8 \
+  --learning-rate 1e-4 --warmup-ratio 0.05 \
+  --minimum-learning-rate-ratio 0.1 --checkpoint-steps 2000
 ```
 
-Reduce the sequence length or batch size if the server runs out of GPU memory. The command saves a LoRA adapter and `run.json` under the selected output directory when training finishes. Intermediate resume checkpoints are not implemented yet, so use persistent server storage and copy completed results out of temporary instances.
+Checkpoints are written under `<output_dir>/checkpoint` on the persistent disk and removed after the adapter and `run.json` are saved. Each checkpoint includes the full model and optimizer state, so it can take several gigabytes. If the run is interrupted, rerun the same command with the same output directory and settings; training resumes from the latest checkpoint and skips completed batches. Keep the checkpoint directory intact until the run finishes.
+
+Reduce the sequence length or batch size if the server runs out of GPU memory. The command saves a LoRA adapter and `run.json` under the selected output directory when training finishes. Use persistent storage for the model cache, checkpoints, and final adapter.
 
 The `data/` and `runs/` directories are not tracked by Git. For the first CPT pilot, transfer at least `data/processed/cpt-medical-v3/cpt_train.jsonl` and `cpt_validation.jsonl` into the matching paths under your project directory. Keep the raw archive, full processed splits, model cache, and run outputs on persistent storage or transfer them separately when moving between machines. Do not commit model weights or datasets to the code repository.
 

@@ -51,13 +51,26 @@ def train(
     if keras.backend.backend() != "tensorflow":
         raise RuntimeError("Training backend is not TensorFlow")
 
+    print("[CPT] Loading training and validation text...", flush=True)
     train_texts = _texts(train_path, limit_train)
     validation_texts = _texts(validation_path, limit_validation)
+    train_steps = (len(train_texts) + batch_size - 1) // batch_size
+    validation_steps = (len(validation_texts) + batch_size - 1) // batch_size
+    print(
+        "[CPT] Data ready: "
+        f"train_examples={len(train_texts)}, "
+        f"validation_examples={len(validation_texts)}, "
+        f"train_steps_per_epoch={train_steps}, "
+        f"validation_steps={validation_steps}, "
+        f"batch_size={batch_size}, epochs={epochs}",
+        flush=True,
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     keras.utils.set_random_seed(5565)
     keras.config.set_dtype_policy("mixed_float16")
     memory_device = "GPU:0"
     tf.config.experimental.reset_memory_stats(memory_device)
+    print(f"[CPT] Loading model preset: {preset}", flush=True)
     preprocessor = keras_hub.models.CausalLMPreprocessor.from_preset(
         preset, sequence_length=sequence_length
     )
@@ -84,7 +97,19 @@ def train(
         len(train_texts), seed=5565
     ).batch(batch_size)
     validation = tf.data.Dataset.from_tensor_slices(validation_texts).batch(batch_size)
-    history = model.fit(training, validation_data=validation, epochs=epochs, shuffle=False)
+    print(
+        "[CPT] Training started. Progress shows steps, ETA, and loss; val_loss appears after validation.",
+        flush=True,
+    )
+    history = model.fit(
+        training,
+        validation_data=validation,
+        epochs=epochs,
+        steps_per_epoch=train_steps,
+        validation_steps=validation_steps,
+        shuffle=False,
+        verbose=1,
+    )
     gpu_memory = tf.config.experimental.get_memory_info(memory_device)
 
     if lora_rank:

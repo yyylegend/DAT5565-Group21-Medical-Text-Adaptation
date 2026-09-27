@@ -121,7 +121,21 @@ uv run healthcpt cpt-pilot \
   --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
 ```
 
+The script prints the number of examples and steps before loading the model. During training, Keras shows the epoch and step progress, estimated time remaining (ETA), and training loss; validation loss appears after each validation pass. The ETA is based on observed batch speed and may change during the run. These losses measure the language-modeling objective, not answer quality.
+
 KerasHub 0.32 includes the `qwen3_5_2b_base` preset and Qwen3.5 model classes, but this project's path has not yet been run successfully on the target server. Treat this as a pilot only. Check the model load, LoRA target layers, memory use, and saved adapter before increasing the sample limits. The SFT training command is not implemented yet.
+
+After the pilot succeeds, run one full pass over the current v3 dataset (24,240 training chunks and 1,645 validation chunks):
+
+```bash
+uv run healthcpt cpt-pilot \
+  data/processed/cpt-medical-v3/cpt_train.jsonl \
+  data/processed/cpt-medical-v3/cpt_validation.jsonl \
+  runs/qwen3_5_2b_cpt_full_1epoch \
+  --preset qwen3_5_2b_base \
+  --limit-train 24240 --limit-validation 1645 \
+  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
+```
 
 Reduce the sequence length or batch size if the server runs out of GPU memory. The command saves a LoRA adapter and `run.json` under the selected output directory when training finishes. Intermediate resume checkpoints are not implemented yet, so use persistent server storage and copy completed results out of temporary instances.
 

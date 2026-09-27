@@ -121,7 +121,21 @@ uv run healthcpt cpt-pilot \
   --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
 ```
 
+脚本会先打印训练样本数和每轮步数。训练时，Keras 会显示轮数、当前步数、预计剩余时间（ETA）和训练损失；每轮验证结束后显示验证损失。ETA 根据当前批次速度估算，训练过程中可能变化。这些损失衡量语言模型训练目标，不代表问答质量。
+
 KerasHub 0.32 提供 `qwen3_5_2b_base` preset 和 Qwen3.5 模型类，但本项目还没有在目标服务器上成功运行过这条路径。先把它当作试跑：确认模型加载、LoRA 作用层、显存占用和 adapter 保存后，再增加样本量。SFT 训练命令还没有实现。
+
+小规模试跑成功后，可对当前 v3 数据集完整训练一轮（24,240 条训练文本片段、1,645 条验证文本片段）：
+
+```bash
+uv run healthcpt cpt-pilot \
+  data/processed/cpt-medical-v3/cpt_train.jsonl \
+  data/processed/cpt-medical-v3/cpt_validation.jsonl \
+  runs/qwen3_5_2b_cpt_full_1epoch \
+  --preset qwen3_5_2b_base \
+  --limit-train 24240 --limit-validation 1645 \
+  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
+```
 
 如果显存不足，可先降低序列长度或 batch size。训练完成后，脚本会把 LoRA adapter 和 `run.json` 写入指定目录。当前没有中途恢复训练的 checkpoint；云服务器若使用临时存储，请选持久化磁盘，并及时备份结果。
 

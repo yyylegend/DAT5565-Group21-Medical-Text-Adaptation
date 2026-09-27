@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/raw/
+data/processed/
+runs/
+.keras/
+# Keep superseded notes out of the active project repository.
+/archives/
+# Instructor-provided requirements and example report stay local.
+/docs/requirements/
+# The submitted proposal contains group members' student IDs.
+/docs/proposal/

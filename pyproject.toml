@@ -1,0 +1,20 @@
+[project]
+name = "dat5565-healthcpt"
+version = "0.1.0"
+description = "Reproducible medical-domain continued pretraining pilot for DAT5565"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "tensorflow[and-cuda]>=2.18,<2.22; sys_platform == 'linux'",
+  "keras-hub>=0.20,<1",
+  "safetensors>=0.5,<1",
+]
+
+[project.scripts]
+healthcpt = "healthcpt.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/healthcpt"]

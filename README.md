@@ -123,6 +123,16 @@ uv run healthcpt cpt-pilot \
 
 The script prints the number of examples and steps before loading the model. During training, Keras shows the epoch and step progress, estimated time remaining (ETA), and training loss; validation loss appears after each validation pass. The ETA is based on observed batch speed and may change during the run. These losses measure the language-modeling objective, not answer quality.
 
+The script also writes TensorBoard scalars every 100 training steps under `<output_dir>/tensorboard`, including training loss and steps per second; validation loss is written after validation. The terminal progress bar remains the place to see ETA. In a second server terminal, start TensorBoard for the full run with:
+
+```bash
+uv run tensorboard \
+  --logdir runs/qwen3_5_2b_cpt_full_1epoch/tensorboard \
+  --host 127.0.0.1 --port 6006
+```
+
+Open the dashboard through an SSH tunnel or the server provider's port-forwarding feature.
+
 KerasHub 0.32 includes the `qwen3_5_2b_base` preset and Qwen3.5 model classes, but this project's path has not yet been run successfully on the target server. Treat this as a pilot only. Check the model load, LoRA target layers, memory use, and saved adapter before increasing the sample limits. The SFT training command is not implemented yet.
 
 After the pilot succeeds, run one full pass over the current v3 dataset (24,240 training chunks and 1,645 validation chunks):

@@ -123,6 +123,16 @@ uv run healthcpt cpt-pilot \
 
 脚本会先打印训练样本数和每轮步数。训练时，Keras 会显示轮数、当前步数、预计剩余时间（ETA）和训练损失；每轮验证结束后显示验证损失。ETA 根据当前批次速度估算，训练过程中可能变化。这些损失衡量语言模型训练目标，不代表问答质量。
 
+脚本还会每训练 100 步向 `<output_dir>/tensorboard` 写入一次 TensorBoard 标量，包括训练损失和每秒步数；验证损失会在验证结束后写入。ETA 仍看终端进度条。在服务器的另一个终端中启动全量训练的 TensorBoard：
+
+```bash
+uv run tensorboard \
+  --logdir runs/qwen3_5_2b_cpt_full_1epoch/tensorboard \
+  --host 127.0.0.1 --port 6006
+```
+
+通过 SSH 隧道或云平台的端口转发功能打开监控页面。
+
 KerasHub 0.32 提供 `qwen3_5_2b_base` preset 和 Qwen3.5 模型类，但本项目还没有在目标服务器上成功运行过这条路径。先把它当作试跑：确认模型加载、LoRA 作用层、显存占用和 adapter 保存后，再增加样本量。SFT 训练命令还没有实现。
 
 小规模试跑成功后，可对当前 v3 数据集完整训练一轮（24,240 条训练文本片段、1,645 条验证文本片段）：

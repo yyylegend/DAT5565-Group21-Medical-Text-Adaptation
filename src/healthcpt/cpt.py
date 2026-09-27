@@ -101,6 +101,16 @@ def train(
         "[CPT] Training started. Progress shows steps, ETA, and loss; val_loss appears after validation.",
         flush=True,
     )
+    tensorboard_log_dir = output_dir / "tensorboard"
+    tensorboard_callback = keras.callbacks.TensorBoard(
+        log_dir=str(tensorboard_log_dir),
+        update_freq=100,
+        write_steps_per_second=True,
+    )
+    print(
+        f"[CPT] TensorBoard scalars will be written to {tensorboard_log_dir} every 100 steps.",
+        flush=True,
+    )
     history = model.fit(
         training,
         validation_data=validation,
@@ -109,6 +119,7 @@ def train(
         validation_steps=validation_steps,
         shuffle=False,
         verbose=1,
+        callbacks=[tensorboard_callback],
     )
     gpu_memory = tf.config.experimental.get_memory_info(memory_device)
 

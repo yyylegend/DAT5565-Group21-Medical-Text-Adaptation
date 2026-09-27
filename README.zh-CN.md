@@ -41,6 +41,16 @@ mkdir -p /path/to/persistent-storage/kagglehub
 export KAGGLEHUB_CACHE=/path/to/persistent-storage/kagglehub
 ```
 
+也可以使用 Hugging Face 上的官方权重。要提前下载到已被 Git 忽略的 `models/` 目录，设置 HF 缓存后运行：
+
+```bash
+mkdir -p models/huggingface
+export HF_HOME="$PWD/models/huggingface"
+uv run python -c "from huggingface_hub import snapshot_download; print(snapshot_download('Qwen/Qwen3.5-2B-Base'))"
+```
+
+训练命令中将 `--preset` 改为 `hf://Qwen/Qwen3.5-2B-Base`。KerasHub 可转换架构兼容的 Hugging Face Safetensors 权重；这个具体模型仍需先小规模试跑，再开始全量训练。
+
 请按 [`uv` 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/)安装 `uv`。
 
 ## 获取项目并检查 GPU

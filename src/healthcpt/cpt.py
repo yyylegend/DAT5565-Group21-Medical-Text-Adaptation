@@ -31,6 +31,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _is_qwen3_5_preset(preset: str) -> bool:
+    normalized = preset.lower()
+    return normalized.startswith("qwen3_5_") or normalized.startswith(
+        "hf://qwen/qwen3.5-"
+    )
+
+
 def train(
     train_path: Path,
     validation_path: Path,
@@ -153,7 +160,7 @@ def train(
     preprocessor = keras_hub.models.CausalLMPreprocessor.from_preset(
         preset, sequence_length=sequence_length
     )
-    if preset.startswith("qwen3_5_"):
+    if _is_qwen3_5_preset(preset):
         backbone = keras_hub.models.Qwen3_5Backbone.from_preset(
             preset, vision_encoder=None
         )
@@ -181,7 +188,7 @@ def train(
             alpha=minimum_learning_rate_ratio,
         )
     optimizer = keras.optimizers.AdamW(learning_rate=learning_rate_schedule)
-    if preset.startswith("qwen3_5_"):
+    if _is_qwen3_5_preset(preset):
         model.compile(optimizer=optimizer, jit_compile=False)
     else:
         model.compile(optimizer=optimizer)

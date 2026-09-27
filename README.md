@@ -41,6 +41,16 @@ mkdir -p /path/to/persistent-storage/kagglehub
 export KAGGLEHUB_CACHE=/path/to/persistent-storage/kagglehub
 ```
 
+You can also use the official Hugging Face checkpoint. To download it into the ignored `models/` folder before training, set the Hugging Face cache and run:
+
+```bash
+mkdir -p models/huggingface
+export HF_HOME="$PWD/models/huggingface"
+uv run python -c "from huggingface_hub import snapshot_download; print(snapshot_download('Qwen/Qwen3.5-2B-Base'))"
+```
+
+Then use `--preset hf://Qwen/Qwen3.5-2B-Base`. KerasHub converts compatible Hugging Face Safetensors checkpoints when loading them; verify this specific model with a small pilot before the full run.
+
 Install `uv` using the [official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Set up the project

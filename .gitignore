@@ -6,6 +6,8 @@ data/raw/
 data/processed/
 runs/
 .keras/
+# Downloaded model weights and local preset files stay off Git.
+/models/
 # Keep superseded notes out of the active project repository.
 /archives/
 # Instructor-provided requirements and example report stay local.

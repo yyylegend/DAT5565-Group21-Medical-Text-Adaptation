@@ -10,6 +10,7 @@ This repository contains the data preparation and TensorFlow/Keras continued-pre
 data/raw/                 downloaded source archives (not tracked by Git)
 data/processed/           cleaned splits and manifests (not tracked by Git)
 docs/research/            bilingual research overview and execution plan
+models/                   local model cache and presets (not tracked by Git)
 runs/                     adapters and run metadata (not tracked by Git)
 src/healthcpt/            data audit, preparation, and CPT commands
 pyproject.toml            project dependencies and Python version

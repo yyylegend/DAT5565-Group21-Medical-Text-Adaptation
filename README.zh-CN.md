@@ -10,6 +10,7 @@
 data/raw/                 原始数据和下载文件（不纳入 Git）
 data/processed/           清理后的数据和清单（不纳入 Git）
 docs/research/            中英文研究概览和执行计划
+models/                   本地模型缓存和预设（不纳入 Git）
 runs/                     LoRA adapter 和运行记录（不纳入 Git）
 src/healthcpt/            数据审计、整理和 CPT 命令
 pyproject.toml            项目依赖与 Python 版本

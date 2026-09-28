@@ -101,6 +101,8 @@ def rouge_l_f1(prediction: str, reference: str) -> float:
         previous = current
 
     longest_common_sequence = previous[-1]
+    if longest_common_sequence == 0:
+        return 0.0
     precision = longest_common_sequence / len(predicted_tokens)
     recall = longest_common_sequence / len(reference_tokens)
     return 2 * precision * recall / (precision + recall)

@@ -3,6 +3,10 @@
 This module uses Python's standard library so the same commands work on a
 server after ``uv sync --locked``. Raw downloads stay under ``data/raw`` and
 prepared files are written to a new versioned directory.
+
+The workflow is: download MedlinePlus and a small PMC sample, clean the text,
+make CPT train/validation splits, remove evaluation overlaps, then write JSONL
+files and a manifest.
 """
 
 from collections import Counter
@@ -33,6 +37,8 @@ SKIP_ARTICLE_TAGS = {
     "inline-formula", "graphic", "media", "supplementary-material",
 }
 
+
+# Text cleanup and file helpers
 
 def clean_text(value: str) -> str:
     """Decode entities and turn XML whitespace into readable spaces."""
@@ -101,10 +107,12 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 
 def _sha256_bytes(data: bytes) -> str:
+    """Return a SHA-256 hash for downloaded content."""
     return sha256(data).hexdigest()
 
 
 def _sha256_file(path: Path) -> str:
+    """Hash a large file in blocks so it does not need to fit in memory."""
     digest = sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
@@ -125,6 +133,8 @@ def _download_bytes(url: str, timeout: int = 60) -> bytes:
             time.sleep(2 ** attempt)
     raise RuntimeError(f"Could not download {url}")
 
+
+# MedlinePlus and PMC downloads
 
 class _MedlinePlusZipLinks(HTMLParser):
     """Find dated compressed Health Topic XML links on the official page."""
@@ -154,6 +164,7 @@ def download_medlineplus(output_dir: Path) -> dict:
     if not parser.links:
         raise RuntimeError("Could not find a dated Health Topic ZIP on the MedlinePlus XML page")
 
+    # Choose the newest dated ZIP found on the official download page.
     date, url = max(parser.links, key=lambda item: item[0])
     filename = Path(urlsplit(url).path).name
     destination = output_dir / filename
@@ -243,6 +254,7 @@ def download_pmc_sample(
         raise ValueError("topic_limit and articles_per_topic must be positive")
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Reuse valid articles already on disk to avoid downloading them again.
     cached_metadata = {}
     for metadata_path in output_dir.glob("PMC*.json"):
         try:
@@ -261,6 +273,7 @@ def download_pmc_sample(
         except (OSError, ValueError, json.JSONDecodeError):
             continue
 
+    # Use common MedQuAD training topics to find relevant PMC articles.
     topics = Counter(
         clean_text(row.get("topic", ""))
         for row in _read_jsonl(qa_train_path)
@@ -272,6 +285,7 @@ def download_pmc_sample(
     cached_articles_reused = 0
     per_topic_counts: dict[str, int] = {}
 
+    # Search each topic and skip article versions that fail the license checks.
     for topic in selected_topics:
         # Request extra IDs in case some versions are retracted or have an
         # unexpected license code in the article metadata.
@@ -341,6 +355,7 @@ def download_medical_sources(
     articles_per_topic: int = 30,
 ) -> dict:
     """Download MedlinePlus XML and a bounded PMC article sample."""
+    # Keep the two sources in separate subfolders for the preparation step.
     medlineplus = download_medlineplus(output_dir / "medlineplus")
     pmc = download_pmc_sample(
         qa_train_path,
@@ -363,7 +378,7 @@ def _canonical_url(url: str) -> str:
 
 
 def _stable_split(document_id: str, seed: int = 5565) -> str:
-    """Put about one in ten whole source documents in CPT validation."""
+    """Put about one in ten whole source documents in validation, repeatably."""
     value = int.from_bytes(sha256(f"{seed}:{document_id}".encode()).digest()[:8], "big") / 2**64
     return "validation" if value >= 0.9 else "train"
 
@@ -373,7 +388,7 @@ def _medlineplus_records(
     train_urls: set[str],
     heldout_urls: set[str],
 ) -> tuple[list[dict], dict]:
-    """Extract English public-domain health-topic summaries from the ZIP."""
+    """Extract English public-domain summaries and keep source pages together."""
     records = []
     stats = Counter()
     with ZipFile(zip_path) as archive:
@@ -405,9 +420,11 @@ def _medlineplus_records(
                 continue
             url = topic.attrib.get("url", "")
             canonical = _canonical_url(url)
+            # Do not train on a page used by a held-out QA evaluation example.
             if canonical and canonical in heldout_urls:
                 stats["heldout_source_pages"] += 1
                 continue
+            # A MedQuAD training page stays in train; other pages use a stable split.
             split = "train" if canonical in train_urls else _stable_split(canonical or title)
             records.append({
                 "text": f"{title}\n{body}",
@@ -422,6 +439,7 @@ def _medlineplus_records(
 
 
 def _first_element(root: ET.Element, name: str) -> ET.Element | None:
+    """Find the first XML element with the requested local tag name."""
     return next((node for node in root.iter() if _tag_name(node.tag) == name), None)
 
 
@@ -436,12 +454,14 @@ def _pmc_records(pmc_dir: Path, heldout_answers: set[str]) -> tuple[list[dict], 
         raise FileNotFoundError(f"Run download-medical-sources first; missing {selection_path}")
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
 
+    # The manifest lists which article files were downloaded and their hashes.
     for selected in selection.get("articles", []):
         xml_path = pmc_dir / selected["xml_file"]
         stats["xml_files_seen"] += 1
         if not xml_path.exists():
             stats["missing_xml"] += 1
             continue
+        # Check the saved checksum before reading an article into the corpus.
         if selected.get("xml_sha256") and _sha256_file(xml_path) != selected["xml_sha256"]:
             stats["xml_hash_mismatch"] += 1
             continue
@@ -480,6 +500,7 @@ def _pmc_records(pmc_dir: Path, heldout_answers: set[str]) -> tuple[list[dict], 
             stats["empty_text"] += 1
             continue
 
+        # Remove articles containing long held-out answers to reduce leakage.
         normalized = normalized_text(text)
         if any(answer in normalized for answer in long_heldout):
             stats["heldout_answer_overlap"] += 1
@@ -502,7 +523,7 @@ def _pmc_records(pmc_dir: Path, heldout_answers: set[str]) -> tuple[list[dict], 
 
 
 def _deduplicate_records(train_rows: list[dict], validation_rows: list[dict]) -> tuple[list[dict], list[dict], int]:
-    """Remove repeated CPT text, giving the training split priority."""
+    """Remove repeated CPT text; if duplicated, keep the training copy."""
     seen: set[str] = set()
     clean_train = []
     removed = 0
@@ -526,7 +547,7 @@ def _deduplicate_records(train_rows: list[dict], validation_rows: list[dict]) ->
 
 
 def _sample_records(rows: list[dict], limit: int, seed: int = 5565) -> list[dict]:
-    """Choose a repeatable random subset while keeping the original order."""
+    """Choose a repeatable random subset while keeping its original order."""
     if limit < 1:
         raise ValueError("medquad_cpt_limit must be positive")
     if limit >= len(rows):
@@ -536,7 +557,7 @@ def _sample_records(rows: list[dict], limit: int, seed: int = 5565) -> list[dict
 
 
 def _chunk_records(rows: list[dict], max_words: int) -> list[dict]:
-    """Split long CPT texts into shorter word-bounded training examples."""
+    """Split long documents into word-bounded examples and keep their metadata."""
     if max_words < 1:
         raise ValueError("chunk_words must be positive")
     chunks = []
@@ -578,7 +599,7 @@ def _clean_evaluation_rows(
     external_cpt_texts: list[str],
     cpt_urls: set[str],
 ) -> tuple[list[dict], dict]:
-    """Remove held-out QA whose source, question, or answer was seen in CPT/SFT train."""
+    """Remove held-out QA that overlaps with training questions, answers, or text."""
     clean = []
     removed = Counter()
     long_cpt_texts = [normalized_text(text) for text in external_cpt_texts if len(text) >= 1000]
@@ -589,6 +610,7 @@ def _clean_evaluation_rows(
         answer = normalized_text(row.get("answer", ""))
         url = _canonical_url(row.get("url", ""))
         answer_hash = sha256(answer.encode()).hexdigest()
+        # Check source, question, and answer overlap before keeping each example.
         if url and url in cpt_urls:
             removed["source_url_in_cpt_train"] += 1
         elif question and question in train_questions:
@@ -609,7 +631,8 @@ def prepare_medical_corpus(
     medquad_cpt_limit: int = CPT_MEDQUAD_LIMIT,
     chunk_words: int = CPT_TEXT_CHUNK_WORDS,
 ) -> dict:
-    """Balance CPT sources, split long texts, and create clean eval files."""
+    """Combine CPT sources, split long texts, and create clean evaluation files."""
+    # Load the prepared QA splits and MedQuAD answer text made by prepare-medquad.
     qa_train = _read_jsonl(medquad_dir / "qa_train.jsonl")
     qa_validation = _read_jsonl(medquad_dir / "qa_validation.jsonl")
     qa_test = _read_jsonl(medquad_dir / "qa_test.jsonl")
@@ -617,6 +640,7 @@ def prepare_medical_corpus(
     train_questions = {normalized_text(row.get("question", "")) for row in qa_train}
     train_answers = {normalized_text(row.get("answer", "")) for row in qa_train}
 
+    # Track evaluation sources and answers so they can be kept out of CPT data.
     validation_urls = {_canonical_url(row.get("url", "")) for row in qa_validation if row.get("url")}
     test_urls = {_canonical_url(row.get("url", "")) for row in qa_test if row.get("url")}
     train_urls = {_canonical_url(row.get("url", "")) for row in qa_train if row.get("url")}
@@ -626,6 +650,7 @@ def prepare_medical_corpus(
         for row in qa_validation + qa_test if row.get("answer")
     }
 
+    # Read the downloaded sources and exclude held-out MedlinePlus pages.
     medlineplus_dir = source_dir / "medlineplus"
     zip_files = sorted(medlineplus_dir.glob("mplus_topics_compressed_*.zip"))
     if not zip_files:
@@ -635,6 +660,7 @@ def prepare_medical_corpus(
     pmc_rows, pmc_stats = _pmc_records(pmc_dir, heldout_answers)
 
     # These unique MedQuAD answers come only from the SFT training split.
+    # Use only a fixed-size sample of MedQuAD answers for continued pretraining.
     medquad_cpt_sample = _sample_records(medquad_cpt_train, medquad_cpt_limit)
     train_candidates = [
         dict(
@@ -649,6 +675,7 @@ def prepare_medical_corpus(
         split = row.pop("split")
         (validation_candidates if split == "validation" else train_candidates).append(row)
 
+    # Merge sources into train/validation sets, then remove repeated documents.
     cpt_train_documents, cpt_validation_documents, duplicate_texts_removed = _deduplicate_records(
         train_candidates, validation_candidates
     )
@@ -663,6 +690,7 @@ def prepare_medical_corpus(
         for row in cpt_train_documents + cpt_validation_documents
         if row.get("url")
     }
+    # Save evaluation sets only after removing text that overlaps with training.
     qa_validation_eval, validation_removed = _clean_evaluation_rows(
         qa_validation, train_questions, train_answers, all_cpt_texts, external_cpt_texts, cpt_urls
     )
@@ -681,6 +709,7 @@ def prepare_medical_corpus(
     _write_jsonl(output_dir / "qa_validation_eval.jsonl", qa_validation_eval)
     _write_jsonl(output_dir / "qa_test_eval.jsonl", qa_test_eval)
 
+    # Record source hashes, cleaning counts, and output names for reproducibility.
     pmc_manifest_path = pmc_dir / "pmc_sample_manifest.json"
     manifest = {
         "seed": 5565,

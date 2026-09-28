@@ -1,4 +1,8 @@
-"""Audit and prepare MedQuAD without mixing source documents across splits."""
+"""Audit and prepare MedQuAD without mixing source documents across splits.
+
+The preparation reads question-answer pairs from the XML files in the ZIP,
+assigns each source page to one split, and writes QA and CPT JSONL files.
+"""
 
 from collections import Counter
 from hashlib import sha256
@@ -11,10 +15,12 @@ import re
 
 
 def clean_text(value: str) -> str:
+    """Decode HTML entities and make runs of whitespace readable."""
     return re.sub(r"\s+", " ", unescape(value)).strip()
 
 
 def extract_records(archive: Path):
+    """Yield one record per question-answer pair in the MedQuAD ZIP file."""
     with ZipFile(archive) as zf:
         for name in sorted(zf.namelist()):
             if not name.lower().endswith(".xml"):
@@ -22,6 +28,7 @@ def extract_records(archive: Path):
             root = ET.fromstring(zf.read(name))
             source = root.attrib.get("source") or name.split("/")[1]
             url = root.attrib.get("url", "")
+            # Keep records from the same source page together during splitting.
             group = url or f"{source}/{root.attrib.get('id', name)}"
             topic = clean_text(root.findtext("Focus") or "")
             for pair in root.findall(".//QAPair"):
@@ -42,11 +49,13 @@ def extract_records(archive: Path):
 
 
 def split_name(group: str, seed: int) -> str:
+    """Assign a whole source page to the same repeatable 80/10/10 split."""
     number = int.from_bytes(sha256(f"{seed}:{group}".encode()).digest()[:8], "big") / 2**64
     return "train" if number < 0.8 else "validation" if number < 0.9 else "test"
 
 
 def audit(archive: Path) -> dict:
+    """Summarize complete, missing, and unique question-answer pairs."""
     sources = Counter()
     usable_documents = set()
     missing = Counter()
@@ -73,6 +82,7 @@ def audit(archive: Path) -> dict:
 
 
 def prepare(archive: Path, output_dir: Path, seed: int = 5565) -> dict:
+    """Write source-separated QA splits and train/validation CPT answer text."""
     output_dir.mkdir(parents=True, exist_ok=True)
     pairs = {name: [] for name in ("train", "validation", "test")}
     seen_pairs = set()
@@ -89,6 +99,7 @@ def prepare(archive: Path, output_dir: Path, seed: int = 5565) -> dict:
         seen_pairs.add(key)
         pairs[split_name(row["group"], seed)].append(row)
 
+    # CPT uses unique answer text from train/validation; test answers stay held out.
     cpt_texts = {}
     seen_answers = set()
     for split in ("train", "validation"):
@@ -122,6 +133,7 @@ def prepare(archive: Path, output_dir: Path, seed: int = 5565) -> dict:
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
+    """Write each record as one UTF-8 JSON object per line."""
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")

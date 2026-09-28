@@ -24,6 +24,7 @@ The Python package keeps only the scripts needed by this workflow:
 | `src/healthcpt/medquad.py` | Audit MedQuAD and create source-disjoint QA splits. |
 | `src/healthcpt/medical_data.py` | Download and clean MedlinePlus/PMC text, sample CPT sources, and create text chunks and evaluation files. |
 | `src/healthcpt/cpt.py` | Run a bounded TensorFlow/KerasHub CPT pilot. |
+| `src/healthcpt/export_hf.py` | Merge a completed Qwen3.5 LoRA adapter and export a Safetensors model folder. |
 | `src/healthcpt/cli.py` | Expose the project commands through `healthcpt`. |
 
 ## Server requirements
@@ -170,6 +171,14 @@ uv run healthcpt cpt-pilot \
 Checkpoints are written under `<output_dir>/checkpoint` on the persistent disk and removed after the adapter and `run.json` are saved. Each checkpoint includes the full model and optimizer state, so it can take several gigabytes. If the run is interrupted, rerun the same command with the same output directory and settings; training resumes from the latest checkpoint and skips completed batches. Keep the checkpoint directory intact until the run finishes.
 
 Reduce the sequence length or batch size if the server runs out of GPU memory. The command saves a LoRA adapter and `run.json` under the selected output directory when training finishes. Use persistent storage for the model cache, checkpoints, and final adapter.
+
+After a successful run, export a standalone Hugging Face-style Safetensors folder by reloading the same base model and merging the saved LoRA adapter into its weights:
+
+```bash
+uv run healthcpt export-hf runs/qwen3_5_2b_cpt_full_1epoch
+```
+
+The folder is written to `runs/qwen3_5_2b_cpt_full_1epoch/hf_export` by default. It contains the merged `model.safetensors`, model config, and tokenizer files. This export is text-only because the CPT run omits Qwen3.5's vision encoder. Keep the adapter file as well for reproducibility.
 
 The `data/` and `runs/` directories are not tracked by Git. For the first CPT pilot, transfer at least `data/processed/cpt-medical-v3/cpt_train.jsonl` and `cpt_validation.jsonl` into the matching paths under your project directory. Keep the raw archive, full processed splits, model cache, and run outputs on persistent storage or transfer them separately when moving between machines. Do not commit model weights or datasets to the code repository.
 

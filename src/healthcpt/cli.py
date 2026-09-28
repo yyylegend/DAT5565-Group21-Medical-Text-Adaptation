@@ -1,4 +1,4 @@
-"""Small command-line entrypoint for data audit, preparation, and CPT pilot."""
+"""Connect terminal commands to the project's data and training functions."""
 
 from argparse import ArgumentParser
 from pathlib import Path
@@ -8,6 +8,7 @@ from .medquad import audit, prepare
 
 
 def main() -> None:
+    # Define each command's inputs in one place so users can run them with --help.
     parser = ArgumentParser(prog="healthcpt")
     commands = parser.add_subparsers(dest="command", required=True)
     audit_parser = commands.add_parser("audit-medquad", help="Count complete and missing QA records")
@@ -48,8 +49,22 @@ def main() -> None:
     cpt_parser.add_argument("--warmup-ratio", type=float, default=0.05)
     cpt_parser.add_argument("--minimum-learning-rate-ratio", type=float, default=0.1)
     cpt_parser.add_argument("--checkpoint-steps", type=int, default=2000)
+    export_parser = commands.add_parser(
+        "export-hf", help="Export a completed Qwen3.5 CPT LoRA run to Safetensors"
+    )
+    export_parser.add_argument(
+        "run_dir",
+        type=Path,
+        help="Completed CPT run folder containing run.json and the LoRA adapter",
+    )
+    export_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Folder for the exported model (default: <run_dir>/hf_export)",
+    )
     args = parser.parse_args()
 
+    # Run the function selected by the user, then print its result as JSON.
     if args.command == "audit-medquad":
         result = audit(args.archive)
     elif args.command == "prepare-medquad":
@@ -73,7 +88,7 @@ def main() -> None:
             medquad_cpt_limit=args.medquad_cpt_limit,
             chunk_words=args.chunk_words,
         )
-    else:
+    elif args.command == "cpt-pilot":
         from .cpt import train
 
         result = train(
@@ -92,6 +107,10 @@ def main() -> None:
             minimum_learning_rate_ratio=args.minimum_learning_rate_ratio,
             checkpoint_steps=args.checkpoint_steps,
         )
+    else:
+        from .export_hf import export_hf
+
+        result = export_hf(args.run_dir, args.output_dir)
     print(json.dumps(result, indent=2))
 
 

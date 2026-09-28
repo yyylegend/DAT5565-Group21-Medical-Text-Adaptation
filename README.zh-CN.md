@@ -24,6 +24,7 @@ Python 包只保留当前工作流需要的脚本：
 | `src/healthcpt/medquad.py` | 审计 MedQuAD，并按来源划分问答数据。 |
 | `src/healthcpt/medical_data.py` | 下载和清理 MedlinePlus/PMC 文本，抽样 CPT 来源，生成文本片段和评测文件。 |
 | `src/healthcpt/cpt.py` | 运行 TensorFlow/KerasHub CPT 小规模试跑。 |
+| `src/healthcpt/export_hf.py` | 合并已完成的 Qwen3.5 LoRA adapter，并导出 Safetensors 模型文件夹。 |
 | `src/healthcpt/cli.py` | 将项目功能整理为 `healthcpt` 命令。 |
 
 ## 训练服务器
@@ -170,6 +171,14 @@ uv run healthcpt cpt-pilot \
 检查点保存在持久盘的 `<output_dir>/checkpoint` 下；每份检查点包含完整模型和优化器状态，可能占用数 GB。LoRA adapter 和 `run.json` 成功保存后，脚本会清理检查点。训练中断后，用相同输出目录和相同参数重新运行命令，会从最近的检查点恢复，并跳过已完成的训练批次。训练完成前不要删除 checkpoint 目录。
 
 如果显存不足，可先降低序列长度或 batch size。训练完成后，脚本会把 LoRA adapter 和 `run.json` 写入指定目录。模型缓存、检查点和最终 adapter 都应放在持久盘。
+
+训练成功结束后，可以运行下面的命令，把 LoRA 合并进基座权重并导出为 Hugging Face 风格的 Safetensors 文件夹：
+
+```bash
+uv run healthcpt export-hf runs/qwen3_5_2b_cpt_full_1epoch
+```
+
+默认输出到 `runs/qwen3_5_2b_cpt_full_1epoch/hf_export`，其中包含合并后的 `model.safetensors`、模型配置和 tokenizer 文件。本次 CPT 没有加载 Qwen3.5 的视觉编码器，因此导出结果仅支持文本。建议保留原始 adapter，便于复现训练结果。
 
 `data/` 和 `runs/` 不纳入 Git。第一次 CPT 试跑至少要把 `data/processed/cpt-medical-v3/cpt_train.jsonl` 和 `cpt_validation.jsonl` 传到项目目录下对应的位置。原始压缩包、完整处理数据、模型缓存和运行结果也应保存在持久盘，或切换机器时单独传输。不要把模型权重或数据集提交到代码仓库。
 

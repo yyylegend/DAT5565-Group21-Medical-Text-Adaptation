@@ -1,4 +1,8 @@
-"""TensorFlow/KerasHub continued pretraining with resumable checkpoints."""
+"""Run TensorFlow/KerasHub continued pretraining with resumable checkpoints.
+
+The training flow is: read CPT text, load a model, train it, then save the
+adapter, metrics, and checkpoint information in the run folder.
+"""
 
 import hashlib
 import json
@@ -10,6 +14,7 @@ from pathlib import Path
 
 
 def _texts(path: Path, limit: int) -> list[str]:
+    """Read the text field from up to `limit` JSONL training examples."""
     texts = []
     with path.open(encoding="utf-8") as handle:
         for line in handle:
@@ -24,6 +29,7 @@ def _texts(path: Path, limit: int) -> list[str]:
 
 
 def _sha256(path: Path) -> str:
+    """Return a file hash so a run records exactly which data it used."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -32,6 +38,7 @@ def _sha256(path: Path) -> str:
 
 
 def _is_qwen3_5_preset(preset: str) -> bool:
+    """Check whether the preset name refers to a Qwen3.5 model."""
     normalized = preset.lower()
     return normalized.startswith("qwen3_5_") or normalized.startswith(
         "hf://qwen/qwen3.5-"
@@ -54,6 +61,8 @@ def train(
     minimum_learning_rate_ratio: float,
     checkpoint_steps: int,
 ) -> dict:
+    """Train the model, save a LoRA adapter, and record settings and metrics."""
+    # Select TensorFlow as Keras's backend before importing Keras.
     os.environ["KERAS_BACKEND"] = "tensorflow"
     import tensorflow as tf
 
@@ -73,6 +82,8 @@ def train(
         raise RuntimeError("Training backend is not TensorFlow")
 
     print("[CPT] Loading training and validation text...", flush=True)
+    # Each non-empty text entry is one training example. With batch size 1,
+    # each example is also one training step.
     train_texts = _texts(train_path, limit_train)
     validation_texts = _texts(validation_path, limit_validation)
     train_steps = (len(train_texts) + batch_size - 1) // batch_size
@@ -92,6 +103,8 @@ def train(
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Save run settings beside the outputs. Refuse to resume with different
+    # data or settings.
     training_config = {
         "preset": preset,
         "train_sha256": _sha256(train_path),
@@ -117,6 +130,7 @@ def train(
     else:
         config_path.write_text(json.dumps(training_config, indent=2), encoding="utf-8")
 
+    # BackupAndRestore uses these files to continue after an interruption.
     backup_dir = output_dir / "checkpoint"
     metadata_path = backup_dir / "training_metadata.json"
     weights_path = backup_dir / "latest.weights.h5"
@@ -129,15 +143,24 @@ def train(
         if epochs == 1 and resume_metadata["epoch"] < epochs:
             resume_steps = int(resume_metadata["batch"]) + 1
 
+    tensorboard_log_dir = output_dir / "tensorboard"
+    checkpoint_frequency = checkpoint_steps if epochs == 1 else "epoch"
+    checkpoint_label = f"{checkpoint_steps:,} steps" if epochs == 1 else "epoch"
     print(
-        "[CPT] Data ready: "
-        f"train_examples={len(train_texts)}, "
-        f"validation_examples={len(validation_texts)}, "
-        f"train_steps_per_epoch={train_steps}, "
-        f"validation_steps={validation_steps}, "
-        f"batch_size={batch_size}, epochs={epochs}, "
-        f"total_steps={total_steps}, warmup_steps={warmup_steps}, "
-        f"minimum_learning_rate={learning_rate * minimum_learning_rate_ratio:.2e}",
+        "[CPT] Run setup\n"
+        f"  Model: {preset}\n"
+        f"  Data: {len(train_texts):,} training / "
+        f"{len(validation_texts):,} validation text examples\n"
+        f"  Steps: {train_steps:,} training / {validation_steps:,} validation "
+        f"per epoch; {total_steps:,} total\n"
+        f"  Sequence length: {sequence_length}; batch size: {batch_size}\n"
+        f"  Epochs: {epochs}; LoRA rank: {lora_rank}\n"
+        f"  Learning rate: {learning_rate:.1e} peak -> "
+        f"{learning_rate * minimum_learning_rate_ratio:.1e} minimum; "
+        f"{warmup_steps:,} warmup steps, then cosine decay\n"
+        f"  Checkpoints: every {checkpoint_label} -> {backup_dir}\n"
+        f"  TensorBoard logs: every 100 steps -> {tensorboard_log_dir}\n"
+        f"  Output folder: {output_dir}",
         flush=True,
     )
     if resume_metadata is not None:
@@ -156,7 +179,9 @@ def train(
     keras.config.set_dtype_policy("mixed_float16")
     memory_device = "GPU:0"
     tf.config.experimental.reset_memory_stats(memory_device)
-    print(f"[CPT] Loading model preset: {preset}", flush=True)
+    print("[CPT] Loading model and tokenizer...", flush=True)
+    # Qwen3.5 is loaded without its vision encoder because this project trains
+    # on text only.
     preprocessor = keras_hub.models.CausalLMPreprocessor.from_preset(
         preset, sequence_length=sequence_length
     )
@@ -172,7 +197,9 @@ def train(
             preset, preprocessor=preprocessor
         )
     if lora_rank:
+        # LoRA trains a small set of adapter weights while freezing the base model.
         model.backbone.enable_lora(rank=lora_rank)
+    # Warm up the learning rate, then lower it gradually with cosine decay.
     if warmup_steps:
         learning_rate_schedule = keras.optimizers.schedules.CosineDecay(
             initial_learning_rate=0.0,
@@ -192,7 +219,9 @@ def train(
         model.compile(optimizer=optimizer, jit_compile=False)
     else:
         model.compile(optimizer=optimizer)
+    print("[CPT] Model and tokenizer loaded.", flush=True)
 
+    # Use a fixed shuffle order so a rerun follows the same data order.
     random.Random(5565).shuffle(train_texts)
     full_training = tf.data.Dataset.from_tensor_slices(train_texts).batch(batch_size)
     if resume_metadata is not None and epochs == 1 and resume_metadata["epoch"] < epochs:
@@ -209,6 +238,7 @@ def train(
     else:
         resumed_from_step = min(int(resume_metadata["epoch"]) * train_steps, total_steps)
     if resume_epoch < epochs and resume_steps:
+        # Skip batches already processed before the interruption.
         training = full_training.skip(resume_steps)
         steps_this_epoch = train_steps - resume_steps
     else:
@@ -216,6 +246,8 @@ def train(
         steps_this_epoch = train_steps
     validation = tf.data.Dataset.from_tensor_slices(validation_texts).batch(batch_size)
 
+    # Track global steps so resumed runs keep checkpoint and progress numbers
+    # aligned.
     class StepAwareBackupAndRestore(keras.callbacks.BackupAndRestore):
         def on_train_begin(self, logs=None):
             super().on_train_begin(logs)
@@ -224,15 +256,13 @@ def train(
         def on_train_batch_end(self, batch, logs=None):
             global_batch = int(self.model.optimizer.iterations.numpy()) - 1
             super().on_train_batch_end(global_batch, logs)
-            if self.save_freq != "epoch" and (global_batch + 1) % checkpoint_steps == 0:
-                print(f"[CPT] Checkpoint saved at optimizer step {global_batch + 1}.", flush=True)
 
         def on_epoch_end(self, epoch, logs=None):
             super().on_epoch_end(epoch, logs)
             self._last_batch_seen = int(self.model.optimizer.iterations.numpy()) - 1
-            if self.save_freq == "epoch":
-                print(f"[CPT] Checkpoint saved after epoch {epoch + 1}.", flush=True)
 
+    # Keras does not log a schedule's current value by default, so record it
+    # explicitly.
     class LearningRateSummary(keras.callbacks.Callback):
         def __init__(self, log_dir: Path):
             super().__init__()
@@ -250,25 +280,11 @@ def train(
         def on_train_end(self, logs=None):
             self.writer.close()
 
-    print(
-        "[CPT] Training started. Progress shows steps, ETA, and loss; val_loss appears after validation.",
-        flush=True,
-    )
-    tensorboard_log_dir = output_dir / "tensorboard"
+    # Keep progress in the terminal and scalar training metrics in TensorBoard logs.
     tensorboard_callback = keras.callbacks.TensorBoard(
         log_dir=str(tensorboard_log_dir),
         update_freq=100,
         write_steps_per_second=True,
-    )
-    print(
-        f"[CPT] TensorBoard scalars will be written to {tensorboard_log_dir} every 100 steps.",
-        flush=True,
-    )
-    checkpoint_frequency = checkpoint_steps if epochs == 1 else "epoch"
-    print(
-        f"[CPT] Interruption checkpoints: {checkpoint_frequency} in {backup_dir}. "
-        "Rerun the same command to resume from the latest checkpoint.",
-        flush=True,
     )
     if resume_steps:
         print(
@@ -276,6 +292,11 @@ def train(
             f"{steps_this_epoch} training steps remain in this epoch.",
             flush=True,
         )
+    print(
+        "[CPT] Training starts. The progress bar shows step, ETA, loss, and token accuracy.\n",
+        flush=True,
+    )
+    # model.fit() runs training and validation and updates the progress display.
     history = model.fit(
         training,
         validation_data=validation,
@@ -304,10 +325,13 @@ def train(
         }
     gpu_memory = tf.config.experimental.get_memory_info(memory_device)
 
+    # Save only the adapter when using LoRA; otherwise save a full KerasHub preset.
     if lora_rank:
         model.backbone.save_lora_weights(str(output_dir / "cpt_adapter.lora.h5"))
+        artifact_path = output_dir / "cpt_adapter.lora.h5"
     else:
         model.save_to_preset(str(output_dir / "cpt_preset"))
+        artifact_path = output_dir / "cpt_preset"
     result = {
         "finished_utc": datetime.now(timezone.utc).isoformat(),
         "preset": preset,
@@ -335,7 +359,15 @@ def train(
         "gpu_allocator_peak_bytes": int(gpu_memory["peak"]),
         "history": {name: [float(x) for x in values] for name, values in history.history.items()},
     }
+    # run.json marks successful completion and stores the metrics from this run.
     (output_dir / "run.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    # Checkpoints are no longer needed after the final model artifact is saved.
     if backup_dir.exists():
         shutil.rmtree(backup_dir)
+    print(
+        "[CPT] Training complete.\n"
+        f"  Model artifact: {artifact_path}\n"
+        f"  Run summary: {output_dir / 'run.json'}",
+        flush=True,
+    )
     return result

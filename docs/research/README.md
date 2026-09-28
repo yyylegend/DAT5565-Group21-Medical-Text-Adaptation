@@ -60,7 +60,7 @@ flowchart LR
 
 原始 MedQuAD 划分保持不变。另生成去重后的 `qa_validation_eval.jsonl`（1,471 条）和 `qa_test_eval.jsonl`（1,573 条）。它们去掉了与 SFT 训练重复的问题或答案；当前检查是精确重复和部分完整答案匹配，还没有做语义近重复审查，不能保证所有知识重叠都已消除。
 
-Base 和最终 SFT 模型要用相同的问题、提示词和生成设置。`evaluate_qa.py` 会输出 normalized exact match、token F1、ROUGE-L 和逐题答案，方便后续人工抽查相关性、信息遗漏及无依据说法。文字重合指标不代表医学正确；人工评分规则还要确定，也没有临床验证。
+Base 和最终 SFT 模型要用相同的问题、提示词和生成设置。`evaluate_qa.py` 使用 `Question: {question}\nAnswer:` 提示词和贪心生成，输出 normalized exact match、token F1、ROUGE-L 和逐题答案，方便人工抽查相关性、信息遗漏及无依据说法。文字重合指标不代表医学正确；人工评分规则还要确定，也没有临床验证。
 
 ## 当前进度
 
@@ -68,8 +68,15 @@ Base 和最终 SFT 模型要用相同的问题、提示词和生成设置。`eva
 - 当前清单是 `data/processed/cpt-medical-v3/manifest.json`。v1、v2 数据仍保留；原始文件和处理结果不纳入 Git，需要单独传到训练服务器。
 - 2026-09-28，Qwen3.5-2B-Base 的 CPT 完成 1 个 epoch：24,240 条训练文本、1,645 条验证文本，序列长度 512、batch size 1、LoRA rank 8，峰值学习率 1e-4。训练 loss 为 0.920，验证 loss 为 1.229；token accuracy 分别为 0.570 和 0.538。这些是语言模型的下一个 token 预测指标，不是问答正确率。
 - 完整 Hugging Face 格式模型导出到 `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`。导出基于 Base 快照 `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`，合并了 12 个文本 q/v 投影权重，并原样保留 297 个视觉权重。训练目录保留 CPT adapter 和 `run.json`；导出目录含 `export_report.json` 与 `inference_check.json`。
-- Transformers 检查成功加载 617 项权重，并完成了文本和图片推理。图片检查使用的是生成的纯色 PNG，所以只能说明模型能加载并接收图片输入；还没有比较真实图片上的能力，也没有完成医学问答质量评测。
-- `evaluate_qa.py` 已加入，可在同一批文本问答上比较 Base 与一个候选模型；目前尚未运行，也还没有问答质量结果。先用 1,471 条验证题做 CPT 阶段检查，测试集保持未使用，留到 SFT 完成后的最终比较。
+- Transformers 检查成功加载 617 项权重，并完成了文本和图片推理。图片检查使用的是生成的纯色 PNG，所以只能说明模型能加载并接收图片输入；真实图片能力比较和人工问答质量评审尚未完成。
+- `evaluate_qa.py` 已在 `qa_validation_eval.jsonl` 的 1,471 条验证题中，用随机种子 5565 抽取 200 题，对比 Base 与 CPT。生成采用 `Question: {question}\nAnswer:`、贪心解码和最多 128 个新 token：
+
+  | 模型 | Normalized exact match | Token F1 | ROUGE-L F1 |
+  |---|---:|---:|---:|
+  | Base | 0.0000 | 0.2499 | 0.1606 |
+  | CPT | 0.0000 | 0.2345 | 0.1639 |
+
+  结果没有显示一致的文字重合度提升，不能据此判断医学回答能力变好或变差；还需要人工抽查。逐题预测和完整汇总保存在服务器 `runs/qa_eval_cpt_validation_500/`，不纳入 Git。测试集仍留到 SFT 完成后的最终比较。
 - SFT 训练代码和命令尚未实现。下一步要用 MedQuAD 的 12,799 条训练问答准备 SFT，并确认 TensorFlow/KerasHub 能从 CPT 产物继续训练。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 

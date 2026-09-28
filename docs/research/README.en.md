@@ -58,7 +58,7 @@ flowchart LR
 
 The original MedQuAD splits remain unchanged. Separate cleaned evaluation files contain 1,471 validation questions and 1,573 test questions. They remove questions or answers that exactly repeat SFT training content. The current checks cover exact duplicates and some full-answer matches; they do not include a semantic near-duplicate audit, so they cannot guarantee that all knowledge overlap is gone.
 
-The Base and final SFT models should use the same questions, prompt, and generation settings. `evaluate_qa.py` reports normalized exact match, token F1, ROUGE-L, and per-question answers for later manual review of relevance, missing information, and unsupported claims. Text-overlap metrics do not establish medical correctness; the human-scoring rubric is still to be defined, and there is no clinical validation.
+The Base and final SFT models should use the same questions, prompt, and generation settings. `evaluate_qa.py` uses the `Question: {question}\nAnswer:` prompt with greedy decoding, and reports normalized exact match, token F1, ROUGE-L, and per-question answers for manual review of relevance, missing information, and unsupported claims. Text-overlap metrics do not establish medical correctness; the human-scoring rubric is still to be defined, and there is no clinical validation.
 
 ## Current status
 
@@ -66,8 +66,15 @@ The Base and final SFT models should use the same questions, prompt, and generat
 - The current manifest is `data/processed/cpt-medical-v3/manifest.json`. v1 and v2 remain available. Raw and processed data are not tracked by Git and must be transferred to the training server separately.
 - On 2026-09-28, one epoch of Qwen3.5-2B-Base CPT completed with 24,240 training text examples and 1,645 validation examples, sequence length 512, batch size 1, LoRA rank 8, and peak learning rate 1e-4. Training loss was 0.920 and validation loss was 1.229; token accuracy was 0.570 and 0.538, respectively. These are next-token language-model metrics, not QA accuracy.
 - The full Hugging Face-format export is at `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`. It uses Base snapshot `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`, merges 12 text q/v projection weights, and preserves all 297 vision weights unchanged. The run folder keeps the CPT adapter and `run.json`; the export folder contains `export_report.json` and `inference_check.json`.
-- Transformers successfully loaded all 617 weights and completed text and image inference. The image check used a generated solid-color PNG, so it only confirms that the model loads and accepts image input. Real-image capability comparisons and medical QA evaluation remain undone.
-- `evaluate_qa.py` is available to compare Base with one candidate on the same text questions, but it has not been run and there are no QA-quality results yet. Use the 1,471 validation questions for the initial CPT check; keep the test split untouched for the final comparison after SFT.
+- Transformers successfully loaded all 617 weights and completed text and image inference. The image check used a generated solid-color PNG, so it only confirms that the model loads and accepts image input. Real-image capability comparisons and manual QA review remain undone.
+- `evaluate_qa.py` compared Base and CPT on a seeded sample of 200 questions from the 1,471-row `qa_validation_eval.jsonl`, using the `Question: {question}\nAnswer:` prompt, greedy decoding, and a 128-token generation limit:
+
+  | Model | Normalized exact match | Token F1 | ROUGE-L F1 |
+  |---|---:|---:|---:|
+  | Base | 0.0000 | 0.2499 | 0.1606 |
+  | CPT | 0.0000 | 0.2345 | 0.1639 |
+
+  The results show mixed text-overlap scores and do not establish a clear QA improvement or decline. Manual review is still needed. Per-question predictions and the full summary are on the server in `runs/qa_eval_cpt_validation_500/`; they are not tracked by Git. Keep the test split for the final Base-versus-CPT+SFT comparison.
 - SFT training code and a command are not implemented yet. The next step is to prepare SFT from the 12,799 MedQuAD training pairs and confirm that TensorFlow/KerasHub can continue from the CPT artifact.
 - Training targets a Linux GPU server with dependencies managed by `uv`. WSL is not needed to prepare or inspect the data locally.
 

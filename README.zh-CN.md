@@ -2,188 +2,211 @@
 
 **语言 / Language:** 简体中文 | [English](README.md)
 
-本仓库包含医学问答项目的数据整理脚本和 TensorFlow/Keras CPT（继续预训练）试跑代码。当前 Base → CPT → SFT 方案和数据说明见[研究概览](docs/research/README.md)，也提供[英文版](docs/research/README.en.md)便于对照。训练步骤面向 Linux GPU 服务器，例如租用的云实例。本地 Windows 用户无需启动 WSL 就能检查或传输数据。
+这份 README 从新服务器开始，带你配置仓库、准备数据，并在 GPU 服务器上用 tmux 运行 CPT。下面的命令要在 SSH 连接到服务器后的 Linux 终端运行，不是在 Windows PowerShell 中运行。项目研究计划和数据来源见[研究概览](docs/research/README.md)。
 
-## 项目结构
+## 1. 开始前需要准备
 
-```text
-data/raw/                 原始数据和下载文件（不纳入 Git）
-data/processed/           清理后的数据和清单（不纳入 Git）
-docs/research/            中英文研究概览和执行计划
-models/                   本地模型缓存和预设（不纳入 Git）
-runs/                     LoRA adapter 和运行记录（不纳入 Git）
-src/healthcpt/            数据审计、整理和 CPT 命令
-pyproject.toml            项目依赖与 Python 版本
-uv.lock                   锁定的依赖版本
-```
+- Linux x86_64 GPU 服务器，能使用 NVIDIA GPU 和兼容的驱动。
+- 云平台提供的持久磁盘。仓库应克隆到持久磁盘，而不是容器临时盘。
+- 首次安装依赖和下载模型时需要网络。
 
-Python 包只保留当前工作流需要的脚本：
+项目锁定的环境使用 Python 3.12、TensorFlow 2.21、Keras 3.15 和 KerasHub 0.32；项目支持 Python 3.11 或 3.12。
+驱动和 GPU 兼容性可参考 [TensorFlow 安装指南](https://www.tensorflow.org/install/pip)。
 
-| 文件 | 用途 |
+## 2. 安装 Git、tmux 和 uv
+
+如果命令不存在，再安装系统工具。若命令行提示符是 root（通常以 # 结尾），直接运行 apt-get，不需要 sudo：
+
+    apt-get update
+    apt-get install -y git tmux curl
+
+若你使用普通用户并且有 sudo 权限，则运行：
+
+    sudo apt-get update
+    sudo apt-get install -y git tmux curl
+
+用官方安装脚本安装 uv：
+
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+安装后重新打开 SSH 终端，再检查：
+
+    git --version
+    tmux -V
+    uv --version
+
+如果你看到 sudo: command not found，而提示符是 root，这是正常的；去掉命令里的 sudo 即可。更多方式见 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/)。
+
+## 3. 克隆仓库并安装 Python 依赖
+
+先在云平台确认持久磁盘的挂载路径。不同服务器的路径不同。把下面第一行替换成你的实际路径：
+
+    cd /path/to/your/persistent-disk
+    git clone https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
+    cd DAT5565-Group21-Medical-Text-Adaptation
+    uv sync --locked --python 3.12
+    uv run python --version
+
+仓库是公开的，克隆时不需要 GitHub 用户名或密码。uv 会使用 Python 3.12；如果服务器没有安装，它可以自动下载。详见 [uv 的 Python 安装说明](https://docs.astral.sh/uv/guides/install-python/)。
+
+## 4. 把数据放进仓库
+
+数据集不在 Git 里。如果你已经在其他电脑上清理好了数据，把下面文件上传到服务器对应目录：
+
+    data/processed/cpt-medical-v3/cpt_train.jsonl
+    data/processed/cpt-medical-v3/cpt_validation.jsonl
+
+后续运行问答评测还需要：
+
+    data/processed/cpt-medical-v3/qa_validation_eval.jsonl
+    data/processed/cpt-medical-v3/qa_test_eval.jsonl
+    data/processed/cpt-medical-v3/manifest.json
+
+上传前可以先创建目标目录：
+
+    mkdir -p data/processed/cpt-medical-v3
+
+你可以使用云平台的文件管理器或 scp。保持上面的文件名和目录结构。当前 CPT 数据包含 24,240 条训练文本片段和 1,645 条验证片段。
+
+### 从原始数据重新生成
+
+如果没有已经处理好的文件，可以在服务器运行下面的数据流程：下载 MedQuAD 压缩包，准备问答划分，下载 MedlinePlus 和有限数量的 PMC 文章，然后生成 CPT 和评测文件。
+
+    mkdir -p data/raw
+    curl -L https://github.com/abachaa/MedQuAD/archive/refs/heads/master.zip \
+      -o data/raw/medquad-master.zip
+
+    uv run healthcpt audit-medquad data/raw/medquad-master.zip
+    uv run healthcpt prepare-medquad \
+      data/raw/medquad-master.zip \
+      data/processed/medquad-v1
+
+    uv run healthcpt download-medical-sources \
+      data/processed/medquad-v1/qa_train.jsonl \
+      data/raw/medical-sources-v3 \
+      --topic-limit 20 --articles-per-topic 30
+
+    uv run healthcpt prepare-medical-corpus \
+      data/processed/medquad-v1 \
+      data/raw/medical-sources-v3 \
+      data/processed/cpt-medical-v3 \
+      --medquad-cpt-limit 6000 --chunk-words 200
+
+PMC 命令最多抽取 600 篇英文 CC0/CC BY 开放获取文章，不会下载整个 PMC 数据库。最终清单会记录数据来源、许可、哈希和移除的重叠内容。原始数据和处理后的数据都不会提交到 Git。
+MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照生成清单里的来源哈希。
+
+## 5. 检查 GPU，并设置模型缓存
+
+在仓库目录中运行：
+
+    nvidia-smi
+    uv run python -c 'import tensorflow as tf; print(tf.__version__); print(tf.config.list_physical_devices("GPU"))'
+
+第二条命令必须列出至少一个 GPU。如果结果为空，先检查服务器镜像、驱动和容器的 GPU 访问权限。
+
+训练命令会在第一次运行时从 Hugging Face 加载模型。启动 tmux 后，在 tmux 会话里把缓存设到被 Git 忽略的 models 目录。只要仓库在持久磁盘上，模型缓存也会保留。Hugging Face 对 [HF_HOME 缓存位置](https://huggingface.co/docs/huggingface_hub/en/package_reference/environment_variables)有说明。
+
+## 6. 必须在 tmux 里启动训练
+
+请在 tmux 会话中运行训练。若直接在普通 SSH 终端里启动，远程连接中断或关闭终端时，训练进程可能一起停止。tmux 可以在 SSH 客户端断开后保留服务器上的训练会话，详见 [tmux 入门说明](https://github.com/tmux/tmux/wiki/Getting-Started)。
+
+在仓库目录启动一个名为 healthcpt 的会话：
+
+    tmux new -s healthcpt
+
+现在你已经进入 tmux。先设置模型缓存，再运行试跑或全量训练。仓库使用 Hugging Face 上的 Qwen3.5-2B-Base，并且只训练文本部分。
+
+    mkdir -p models/huggingface
+    export HF_HOME="$PWD/models/huggingface"
+
+### 可选：先做小规模试跑
+
+这会检查模型能否加载、GPU 是否可用，以及 adapter 能否保存：
+
+    uv run healthcpt cpt-pilot \
+      data/processed/cpt-medical-v3/cpt_train.jsonl \
+      data/processed/cpt-medical-v3/cpt_validation.jsonl \
+      runs/qwen3_5_2b_cpt_pilot \
+      --preset hf://Qwen/Qwen3.5-2B-Base \
+      --limit-train 32 --limit-validation 8 \
+      --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
+
+### 全量 CPT 训练
+
+    uv run healthcpt cpt-pilot \
+      data/processed/cpt-medical-v3/cpt_train.jsonl \
+      data/processed/cpt-medical-v3/cpt_validation.jsonl \
+      runs/qwen3_5_2b_cpt_full_1epoch \
+      --preset hf://Qwen/Qwen3.5-2B-Base \
+      --limit-train 24240 --limit-validation 1645 \
+      --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8 \
+      --learning-rate 1e-4 --warmup-ratio 0.05 \
+      --minimum-learning-rate-ratio 0.1 --checkpoint-steps 2000
+
+开始时，脚本会分行显示模型、数据量、训练参数、输出目录、TensorBoard 目录和检查点频率。随后 Keras 进度条显示 step、预计剩余时间（ETA）、loss 和 token accuracy。进度条在同一行动态刷新，这是正常的；验证结束后会显示验证 loss。这些是语言模型训练指标，不代表医疗问答正确率。
+
+训练日志每 100 步写入运行目录下的 TensorBoard 文件。查看曲线时，在 tmux 窗口按 Ctrl+B，松开按键，再按小写 c 新建窗口，然后在新窗口运行：
+
+    uv run tensorboard \
+      --logdir runs/qwen3_5_2b_cpt_full_1epoch/tensorboard \
+      --host 127.0.0.1 --port 6006
+
+通过 SSH 隧道或云平台端口转发功能访问 6006 端口。
+
+## 7. 暂离终端，再回来查看训练
+
+离开训练时，按 Ctrl+B，松开按键，再按小写 d。这会从 tmux 分离，但训练仍在服务器上运行。
+
+之后重新 SSH 登录并运行：
+
+    cd /path/to/your/persistent-disk/DAT5565-Group21-Medical-Text-Adaptation
+    tmux ls
+    tmux attach -t healthcpt
+
+分离 tmux 后关闭本地终端是安全的。云服务器本身仍需保持运行；关闭、重启或释放实例会停止 GPU 进程。已经保存的检查点仍在持久磁盘上。
+
+不要用 Ctrl+C 来暂离；Ctrl+C 会中断 Python 训练程序。
+
+## 8. 中断后继续训练
+
+训练每 2,000 步保存一次恢复检查点。若要在检查点处停止，等进度计数到 2,000 的倍数后，再留几秒让磁盘写入完成，然后按 Ctrl+C。如果在两次检查点之间中断，用相同数据、输出目录和参数重新运行全量训练命令，脚本会从最近的检查点继续；上次检查点之后的步骤可能需要重跑。
+
+训练成功结束前，不要删除运行目录里的 checkpoint 文件夹。训练完成后，脚本会保存 LoRA adapter 和 run.json，再清理临时检查点。
+
+如果训练时要更新代码，等到检查点保存完成后按 Ctrl+C 停止训练，再拉取代码并用原命令继续：
+
+    git pull --ff-only origin main
+
+恢复时，数据文件和训练参数都必须与之前一致。训练已经成功完成后，不要再次运行 CPT 命令；使用导出命令即可：
+
+    uv run healthcpt export-hf runs/qwen3_5_2b_cpt_full_1epoch
+
+导出目录中包含合并后的 model.safetensors、模型配置和 tokenizer 文件。由于训练时没有加载 Qwen3.5 的视觉编码器，导出结果只支持文本输入。
+
+## 9. 常见提示和错误
+
+| 控制台信息 | 含义和处理方法 |
 |---|---|
-| `src/healthcpt/medquad.py` | 审计 MedQuAD，并按来源划分问答数据。 |
-| `src/healthcpt/medical_data.py` | 下载和清理 MedlinePlus/PMC 文本，抽样 CPT 来源，生成文本片段和评测文件。 |
-| `src/healthcpt/cpt.py` | 运行 TensorFlow/KerasHub CPT 小规模试跑。 |
-| `src/healthcpt/export_hf.py` | 合并已完成的 Qwen3.5 LoRA adapter，并导出 Safetensors 模型文件夹。 |
-| `src/healthcpt/cli.py` | 将项目功能整理为 `healthcpt` 命令。 |
+| git: command not found 或 tmux: command not found | 用 apt-get 安装缺少的工具。若当前是 root 用户，不要加 sudo。 |
+| uv: command not found | 按上面的步骤安装 uv，然后重新打开 SSH 终端。 |
+| 克隆时 GitHub 要求用户名或密码 | 仓库是公开的。按 Ctrl+C 取消，然后使用上面的纯 HTTPS 地址，不要输入密码。 |
+| All log messages before absl::InitializeLog() 或 cpu_feature_guard 提示 | TensorFlow 启动和日志提示。只要训练继续运行，可以忽略。 |
+| hwloc topology 警告或 Failed to find hwloc NUMA node | 容器提供的 CPU/NUMA 信息不完整。如果 TensorFlow 能看到 GPU 且 step 在增加，通常可以忽略。 |
+| Hugging Face Hub unauthenticated-request 提示 | 公开模型仍可下载；这个提示主要是说未登录时请求速度可能受限。 |
+| KerasHub 提示 297 个权重未加载，且名字都以 model.visual 开头 | 当前训练不包含视觉编码器，这是预期行为。若未加载权重里有其他名字，不要忽略，应先检查模型加载。 |
+| TensorFlow 没列出 GPU 或提示 No TensorFlow GPU detected | 不能忽略。检查 nvidia-smi、服务器镜像和容器 GPU 权限。 |
+| CUDA out of memory 或进程显示 Killed | 不能忽略。检查显存，降低序列长度或 batch size 后再运行。 |
+| 按 Ctrl+C 后出现 KeyboardInterrupt | 这是主动中断时的正常提示。用相同命令重跑即可从最近的检查点恢复。 |
 
-## 训练服务器
+新版脚本会在开头显示检查点频率和位置，保存时不额外打印提示行，以免打断实时进度条。step、ETA 和 loss 在同一行动态变化是正常的。
 
-- Linux x86_64（Ubuntu 即可）、Python 3.11 或 3.12，以及 `uv`。
-- NVIDIA GPU 和可用的驱动；开始前先运行 `nvidia-smi` 确认服务器能看到 GPU。
-- 首次安装需要网络，以便获取 Python 依赖和模型权重；也可以预先缓存或使用服务器镜像。
+## 仓库里有什么
 
-当前锁定环境使用 Python 3.11/3.12、TensorFlow 2.21、Keras 3.15 和 KerasHub 0.32。请选择干净的 Linux GPU 镜像，再用 `uv sync --locked` 安装项目依赖。Python 3.8 和 TensorFlow 1.x 环境不兼容本项目。服务器还需要兼容的 NVIDIA 驱动。具体要求可查 [TensorFlow 安装指南](https://www.tensorflow.org/install/pip)。
+- data/：原始来源和处理后的数据，不纳入 Git。
+- models/：下载的模型缓存，不纳入 Git。
+- runs/：检查点、TensorBoard 日志、adapter 和运行记录，不纳入 Git。
+- docs/research/：中英文研究概览和研究笔记。
 
-KerasHub 会在第一次加载时下载模型预设。训练前把 `KAGGLEHUB_CACHE` 指向服务器的持久存储，避免实例重启后重新下载：
+主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练模型，export_hf.py 导出训练完成的 adapter。
 
-```bash
-mkdir -p /path/to/persistent-storage/kagglehub
-export KAGGLEHUB_CACHE=/path/to/persistent-storage/kagglehub
-```
-
-也可以使用 Hugging Face 上的官方权重。要提前下载到已被 Git 忽略的 `models/` 目录，设置 HF 缓存后运行：
-
-```bash
-mkdir -p models/huggingface
-export HF_HOME="$PWD/models/huggingface"
-uv run python -c "from huggingface_hub import snapshot_download; print(snapshot_download('Qwen/Qwen3.5-2B-Base'))"
-```
-
-训练命令中将 `--preset` 改为 `hf://Qwen/Qwen3.5-2B-Base`。KerasHub 可转换架构兼容的 Hugging Face Safetensors 权重；这个具体模型仍需先小规模试跑，再开始全量训练。
-
-请按 [`uv` 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/)安装 `uv`。
-
-## 获取项目并检查 GPU
-
-在 Linux GPU 服务器上，把仓库克隆到持久目录中。将占位符替换成持久目录和 GitHub 仓库地址：
-
-```bash
-cd YOUR_PERSISTENT_DIRECTORY
-git clone YOUR_GROUP_REPOSITORY_URL DAT5565-Final-Project
-cd DAT5565-Final-Project
-uv sync --locked
-```
-
-`uv sync --locked` 会按 `uv.lock` 创建环境并安装依赖。然后检查 TensorFlow 是否能使用 GPU：
-
-```bash
-nvidia-smi
-uv run python -c "import tensorflow as tf; print(tf.__version__); print(tf.config.list_physical_devices('GPU'))"
-```
-
-第二条命令应该显示至少一个 GPU。如果结果为空，先检查服务器的驱动和 GPU 是否已开放给当前环境，再启动 CPT。
-
-## 准备 MedQuAD
-
-原始压缩包和生成的数据都不纳入 Git。在服务器上下载 [MedQuAD 仓库](https://github.com/abachaa/MedQuAD)的压缩包，或把本地相同的 ZIP 文件传上去，并保存为 `data/raw/medquad-master.zip`：
-
-```bash
-mkdir -p data/raw
-curl -L https://github.com/abachaa/MedQuAD/archive/refs/heads/master.zip \
-  -o data/raw/medquad-master.zip
-```
-
-研究概览中的统计使用 SHA-256 为 `45aeef400844f3551a7862c3378cc9edf72818ef09d6c1d400f227207ee5179d` 的压缩包。GitHub `master` 内容可能改变；使用新下载的文件前请先检查哈希：
-
-```bash
-sha256sum data/raw/medquad-master.zip
-```
-
-运行审计，并生成训练/验证/测试问答划分和 CPT 文本：
-
-```bash
-uv run healthcpt audit-medquad data/raw/medquad-master.zip
-uv run healthcpt prepare-medquad \
-  data/raw/medquad-master.zip \
-  data/processed/medquad-v1
-```
-
-准备脚本会删除缺少问题或答案的记录及完全重复的问答，并按来源网址划分训练、验证和测试集。当前审计得到 16,359 对不同的完整问答，来自 5,486 个至少包含一条完整问答的 XML 文件。v3 CPT 数据将每个文本片段作为一个训练样本：共有 24,240 段，来自 4,401 个来源文档编号。详情见[研究概览](docs/research/README.md)。
-
-## 下载医学文本并准备 CPT 数据
-
-下载最新的 MedlinePlus Health Topic XML，以及从 MedQuAD 常见主题中选出的 PMC 开放获取文章。默认每个主题最多下载 30 篇，覆盖最多 20 个主题（最多 600 篇）；不会下载整个 PMC 数据库。
-
-```bash
-uv run healthcpt download-medical-sources \
-  data/processed/medquad-v1/qa_train.jsonl \
-  data/raw/medical-sources-v3 \
-  --topic-limit 20 --articles-per-topic 30
-```
-
-原始文件会保存到 `data/raw/medical-sources-v3/medlineplus/` 和 `data/raw/medical-sources-v3/pmc_oa/`。使用带版本号的目录可以保留之前的数据样本。
-
-清理文本、平衡 CPT 来源并生成无明显训练重叠的问答评测文件：
-
-```bash
-uv run healthcpt prepare-medical-corpus \
-  data/processed/medquad-v1 \
-  data/raw/medical-sources-v3 \
-  data/processed/cpt-medical-v3 \
-  --medquad-cpt-limit 6000 --chunk-words 200
-```
-
-这会从 MedQuAD 的训练答案中固定随机抽取 6,000 条用于 CPT，但 SFT 问答训练集保持完整；MedlinePlus 摘要中的 HTML 标签会被清除；长文本会切成最多 200 个空格分词的片段。清单会记录片段数、来源文档数、许可、文件哈希和重叠移除情况。目前 v3 有 24,240 段 CPT 训练文本、1,645 段 CPT 验证文本、1,471 条清理后的 QA 验证样本和 1,573 条清理后的 QA 测试样本。迁移到训练服务器时，请一并传输原始数据、处理后文件和清单；`data/` 已从 Git 排除。
-
-## 运行 Qwen3.5-2B CPT 试跑
-
-先运行一个小规模试跑，确认模型能加载、训练能完成、LoRA adapter 能保存：
-
-```bash
-uv run healthcpt cpt-pilot \
-  data/processed/cpt-medical-v3/cpt_train.jsonl \
-  data/processed/cpt-medical-v3/cpt_validation.jsonl \
-  runs/qwen3_5_2b_cpt_pilot \
-  --preset qwen3_5_2b_base \
-  --limit-train 32 --limit-validation 8 \
-  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8
-```
-
-脚本会先打印训练样本数和每轮步数。训练时，Keras 会显示轮数、当前步数、预计剩余时间（ETA）和训练损失；每轮验证结束后显示验证损失。ETA 根据当前批次速度估算，训练过程中可能变化。这些损失衡量语言模型训练目标，不代表问答质量。
-
-脚本还会每训练 100 步向 `<output_dir>/tensorboard` 写入一次 TensorBoard 标量，包括训练损失、学习率和每秒步数；验证损失会在验证结束后写入。ETA 仍看终端进度条。在服务器的另一个终端中启动全量训练的 TensorBoard：
-
-```bash
-uv run tensorboard \
-  --logdir runs/qwen3_5_2b_cpt_full_1epoch/tensorboard \
-  --host 127.0.0.1 --port 6006
-```
-
-通过 SSH 隧道或云平台的端口转发功能打开监控页面。
-
-KerasHub 0.32 提供 `qwen3_5_2b_base` preset 和 Qwen3.5 模型类，但本项目还没有在目标服务器上成功运行过这条路径。先把它当作试跑：确认模型加载、LoRA 作用层、显存占用和 adapter 保存后，再增加样本量。SFT 训练命令还没有实现。
-
-小规模试跑成功后，可对当前 v3 数据集完整训练一轮（24,240 条训练文本片段、1,645 条验证文本片段）。参数采用 5% 线性 warmup、余弦衰减到最高学习率的 10%，每 2,000 步保存一次检查点：
-
-```bash
-uv run healthcpt cpt-pilot \
-  data/processed/cpt-medical-v3/cpt_train.jsonl \
-  data/processed/cpt-medical-v3/cpt_validation.jsonl \
-  runs/qwen3_5_2b_cpt_full_1epoch \
-  --preset qwen3_5_2b_base \
-  --limit-train 24240 --limit-validation 1645 \
-  --sequence-length 512 --batch-size 1 --epochs 1 --lora-rank 8 \
-  --learning-rate 1e-4 --warmup-ratio 0.05 \
-  --minimum-learning-rate-ratio 0.1 --checkpoint-steps 2000
-```
-
-检查点保存在持久盘的 `<output_dir>/checkpoint` 下；每份检查点包含完整模型和优化器状态，可能占用数 GB。LoRA adapter 和 `run.json` 成功保存后，脚本会清理检查点。训练中断后，用相同输出目录和相同参数重新运行命令，会从最近的检查点恢复，并跳过已完成的训练批次。训练完成前不要删除 checkpoint 目录。
-
-如果显存不足，可先降低序列长度或 batch size。训练完成后，脚本会把 LoRA adapter 和 `run.json` 写入指定目录。模型缓存、检查点和最终 adapter 都应放在持久盘。
-
-训练成功结束后，可以运行下面的命令，把 LoRA 合并进基座权重并导出为 Hugging Face 风格的 Safetensors 文件夹：
-
-```bash
-uv run healthcpt export-hf runs/qwen3_5_2b_cpt_full_1epoch
-```
-
-默认输出到 `runs/qwen3_5_2b_cpt_full_1epoch/hf_export`，其中包含合并后的 `model.safetensors`、模型配置和 tokenizer 文件。本次 CPT 没有加载 Qwen3.5 的视觉编码器，因此导出结果仅支持文本。建议保留原始 adapter，便于复现训练结果。
-
-`data/` 和 `runs/` 不纳入 Git。第一次 CPT 试跑至少要把 `data/processed/cpt-medical-v3/cpt_train.jsonl` 和 `cpt_validation.jsonl` 传到项目目录下对应的位置。原始压缩包、完整处理数据、模型缓存和运行结果也应保存在持久盘，或切换机器时单独传输。不要把模型权重或数据集提交到代码仓库。
-
-## 当前限制
-
-- 已验证的是旧 Qwen2.5 路径上的两条训练样本试跑；它不能证明 Qwen3.5 兼容、正式训练速度或问答质量会提高。
-- v3 CPT 数据已经整理完成，但 Qwen3.5 试跑还没执行；SFT 训练和最终评测代码仍待实现。
-- DPO 和 GRPO 是从同一 SFT 检查点分支的可选扩展；仓库中尚未实现。DPO 需要偏好对，GRPO 需要明确奖励信号和兼容的训练框架。
+当前仓库包含数据处理、CPT 和 Hugging Face 格式导出。SFT 训练、自动问答质量评测、DPO 和 GRPO 训练命令尚未实现。

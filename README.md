@@ -2,7 +2,7 @@
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 
-This README walks through the project from a new Linux GPU server to a running CPT job. Run these commands in an SSH terminal connected to the server, not in Windows PowerShell. The project plan and data decisions are in the [research overview](docs/research/README.md).
+This README walks through the project from a new Linux GPU server to a running CPT job. Run these commands in an SSH terminal connected to the server, not in Windows PowerShell. The project plan and data decisions are in the [research overview](docs/research/README.en.md).
 
 ## 1. What you need
 
@@ -192,14 +192,16 @@ For another run, replace the snapshot folder with the one printed by find. Use t
 
 The default output is hf_export_multimodal inside the run folder; it must be empty. Check free space with df -h . first; the output needs roughly one more full model copy. The exporter copies the original Safetensors files and replaces only the 12 text q/v projection tensors trained by LoRA. It keeps the original tensor dtypes, shard index, full config, image/video processor, tokenizer, and license files. It checks by SHA-256 that every other weight byte, including the vision encoder and visual merger, is unchanged. export_report.json records the selected Base snapshot and these checks. Keep the original adapter too.
 
-Preserving vision weights does not establish unchanged image/video quality: text CPT changes the language model that interprets visual features. The full export has not yet been tested on the training server. After exporting, use a local JPG/PNG for this separate Transformers loading and inference check:
+Preserving vision weights does not establish unchanged image/video quality: text CPT changes the language model that interprets visual features. For this run, the Hugging Face export loaded all 617 weights in Transformers, and both text and image inference completed with a generated solid-color test image. This confirms that the export loads and accepts image input; it does not measure medical-answer quality or real-image understanding.
+
+For future exports, use a local JPG/PNG for this separate Transformers loading and inference check:
 
     uv run --no-project --python 3.12 --with "transformers>=5.9,<6" --with torch --with torchvision --with pillow \
       python src/healthcpt/verify_hf.py \
       runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal \
       --image /path/to/test-image.jpg
 
-This installs optional inference packages outside the training environment. It checks missing/unexpected weights, finite logits, and short text/image generation, then writes inference_check.json. It is a compatibility check, not a quality benchmark. For quality evaluation, compare the original Base and merged model on the same text and image examples.
+This installs optional inference packages outside the training environment. PyTorch and its CUDA packages can be large downloads. If your active Python environment already has a Qwen3.5-compatible Transformers version, PyTorch, and Pillow, run the script with `python` directly instead. The check looks for missing or unexpected weights, finite logits, and short text/image generation, then writes inference_check.json. It is a compatibility check, not a quality benchmark. For quality evaluation, compare the original Base and merged model on the same text and image examples.
 
 ## 9. Common messages and errors
 
@@ -227,4 +229,4 @@ The current script prints the checkpoint frequency and location at startup, then
 
 The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains the model, and export_hf.py merges a completed adapter. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check.
 
-The repository currently provides data preparation, CPT, and Hugging Face export. SFT, final answer-quality evaluation, DPO, and GRPO training commands are not implemented yet.
+The Qwen3.5-2B CPT run is complete, and its full Hugging Face-format export has passed a basic Transformers text/image check. See the [research overview](docs/research/README.en.md) for the run settings, metrics, and limits. The repository currently provides data preparation, CPT, and Hugging Face export; SFT and final answer-quality evaluation are the next work. DPO and GRPO remain optional and are not implemented.

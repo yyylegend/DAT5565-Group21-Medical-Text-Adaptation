@@ -1,6 +1,6 @@
 # Medical Question Answering Model: Research and Data Preparation
 
-Updated: 2026-09-27. The submitted proposal remains unchanged. This document records the current experiment plan and v3 data status. See the [简体中文版](README.md).
+Updated: 2026-09-28. The submitted proposal remains unchanged. This document records the current experiment plan, v3 data status, and completed CPT stage. See the [简体中文版](README.md).
 
 ## Project question
 
@@ -20,7 +20,7 @@ DPO and GRPO are optional extensions if time, data, and the TensorFlow/Keras too
 
 The original MedQuAD SFT rows contain a `question`, a reference `answer`, and fields such as topic and source URL. CPT uses plain text as learning material: MedQuAD answer text, MedlinePlus topic title plus summary, or PMC article title, abstract, and body. CPT JSONL rows keep the text, source, document ID, and license metadata. Long documents are split into smaller rows with a `chunk_index`.
 
-Simplified examples: an SFT row is `{"question":"What is asthma?","answer":"Asthma is ..."}`. A CPT row can look like `{"text":"[one chunk from the paper]","source":"PMC","document":"PMC...","chunk_index":3,"license":"CC BY"}`. Chunks target 200 whitespace-separated words for the planned 512-token input length. A word is not the same as a tokenizer token, and KerasHub pads or truncates text to a fixed sequence length. See the [KerasHub preprocessor documentation](https://keras.io/keras_hub/api/base_classes/causal_lm_preprocessor/). Before full training on the server, verify chunk lengths with the actual tokenizer so chunks are not heavily truncated.
+Simplified examples: an SFT row is `{"question":"What is asthma?","answer":"Asthma is ..."}`. A CPT row can look like `{"text":"[one chunk from the paper]","source":"PMC","document":"PMC...","chunk_index":3,"license":"CC BY"}`. CPT used a 512-token input length. A 200-word chunk is not necessarily 512 tokenizer tokens, and KerasHub pads or truncates text to a fixed sequence length. We have not separately measured the truncation rate. See the [KerasHub preprocessor documentation](https://keras.io/keras_hub/api/base_classes/causal_lm_preprocessor/).
 
 ## v3 CPT mixture
 
@@ -64,7 +64,10 @@ The Base and final SFT models should use the same questions, prompt, and generat
 
 - MedQuAD, MedlinePlus, and 571 PMC articles have been downloaded. The v3 CPT corpus has been cleaned, sampled, and chunked.
 - The current manifest is `data/processed/cpt-medical-v3/manifest.json`. v1 and v2 remain available. Raw and processed data are not tracked by Git and must be transferred to the training server separately.
-- Full Qwen3.5-2B CPT, SFT, evaluation code, and training have not been completed. The locked KerasHub version includes the Qwen3.5 preset and model classes, but this project's actual model loading, training, and LoRA target layers have not been verified on the server. The existing GPU smoke run used the older Qwen2.5-0.5B path and does not verify the 2B setup.
+- On 2026-09-28, one epoch of Qwen3.5-2B-Base CPT completed with 24,240 training text examples and 1,645 validation examples, sequence length 512, batch size 1, LoRA rank 8, and peak learning rate 1e-4. Training loss was 0.920 and validation loss was 1.229; token accuracy was 0.570 and 0.538, respectively. These are next-token language-model metrics, not QA accuracy.
+- The full Hugging Face-format export is at `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`. It uses Base snapshot `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`, merges 12 text q/v projection weights, and preserves all 297 vision weights unchanged. The run folder keeps the CPT adapter and `run.json`; the export folder contains `export_report.json` and `inference_check.json`.
+- Transformers successfully loaded all 617 weights and completed text and image inference. The image check used a generated solid-color PNG, so it only confirms that the model loads and accepts image input. Real-image capability comparisons and medical QA evaluation remain undone.
+- SFT training and QA evaluation code are not implemented yet. The next step is to prepare SFT from the 12,799 MedQuAD training pairs and confirm that TensorFlow/KerasHub can continue from the CPT artifact. Keep the 1,471 validation questions and 1,573 test questions separate; reserve the test split for the final comparison.
 - Training targets a Linux GPU server with dependencies managed by `uv`. WSL is not needed to prepare or inspect the data locally.
 
 If DPO or GRPO is attempted later, both should branch independently from the same SFT checkpoint. Define and version the preference data, reward rule, and evaluation set before starting. A higher reward score alone does not prove that answers improved. If the toolchain or data are not ready in time, complete the Base→CPT→SFT workflow.

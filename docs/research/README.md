@@ -2,7 +2,7 @@
 
 **语言 / Language:** 简体中文 | [English](README.en.md)
 
-更新：2026-09-27。已提交的 proposal 保留原稿；本文件记录当前实验方案和 v3 数据状态。
+更新：2026-09-28。已提交的 proposal 保留原稿；本文件记录当前实验方案、v3 数据状态和已完成的 CPT 阶段。
 
 ## 项目要回答什么
 
@@ -22,7 +22,7 @@ DPO 和 GRPO 暂作可选扩展：如果时间、数据和 TensorFlow/Keras 工�
 
 MedQuAD 的 SFT 原始记录有 `question`（问题）、`answer`（参考答案）及主题、来源网址等字段。CPT 则把一段文字作为学习材料：MedQuAD 用答案正文，MedlinePlus 用“主题标题 + 摘要”，PMC 用“论文标题 + 摘要 + 正文”。CPT JSONL 保存 `text`、来源、文档编号和许可等信息；较长文本会再拆成带 `chunk_index` 的小段。
 
-格式示意（简化）：SFT 一行是 `{"question":"What is asthma?","answer":"Asthma is ..."}`；CPT 一行可以是 `{"text":"[论文正文的一段]","source":"PMC","document":"PMC...","chunk_index":3,"license":"CC BY"}`。这些 200 词片段是为了适配计划中的 512-token 输入长度；词数不等于 tokenizer 的 token 数，KerasHub 仍会将输入填充或截断到固定长度。[KerasHub 文档](https://keras.io/keras_hub/api/base_classes/causal_lm_preprocessor/)说明了这一处理方式；在服务器正式训练前，还要用实际 tokenizer 确认片段没有被大量截断。
+格式示意（简化）：SFT 一行是 `{"question":"What is asthma?","answer":"Asthma is ..."}`；CPT 一行可以是 `{"text":"[论文正文的一段]","source":"PMC","document":"PMC...","chunk_index":3,"license":"CC BY"}`。CPT 使用了 512-token 输入长度；200 个空格分词的词数不等于 tokenizer 的 token 数，文本可能会被填充或截断。当前还没有单独统计被截断的比例。[KerasHub 文档](https://keras.io/keras_hub/api/base_classes/causal_lm_preprocessor/)说明了预处理方式。
 
 ## v3 CPT 配比
 
@@ -66,7 +66,10 @@ Base 和最终 SFT 模型要用相同的问题、提示词和生成设置。计�
 
 - MedQuAD、MedlinePlus 和 571 篇 PMC 文章已下载；v3 CPT 数据已清理、抽样并切块。
 - 当前清单是 `data/processed/cpt-medical-v3/manifest.json`。v1、v2 数据仍保留；原始文件和处理结果不纳入 Git，需要单独传到训练服务器。
-- 尚未完成 Qwen3.5-2B 的正式 CPT、SFT、评测代码和完整训练。锁定的 KerasHub 版本包含 Qwen3.5 preset 和模型类，但本项目的实际加载、训练及 LoRA 目标层还没有在服务器上验证。已有的 CPT GPU 功能试跑使用旧的 Qwen2.5-0.5B 路径，不代表 2B 训练已验证。
+- 2026-09-28，Qwen3.5-2B-Base 的 CPT 完成 1 个 epoch：24,240 条训练文本、1,645 条验证文本，序列长度 512、batch size 1、LoRA rank 8，峰值学习率 1e-4。训练 loss 为 0.920，验证 loss 为 1.229；token accuracy 分别为 0.570 和 0.538。这些是语言模型的下一个 token 预测指标，不是问答正确率。
+- 完整 Hugging Face 格式模型导出到 `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`。导出基于 Base 快照 `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`，合并了 12 个文本 q/v 投影权重，并原样保留 297 个视觉权重。训练目录保留 CPT adapter 和 `run.json`；导出目录含 `export_report.json` 与 `inference_check.json`。
+- Transformers 检查成功加载 617 项权重，并完成了文本和图片推理。图片检查使用的是生成的纯色 PNG，所以只能说明模型能加载并接收图片输入；还没有比较真实图片上的能力，也没有完成医学问答质量评测。
+- SFT 训练和问答评测代码尚未实现。下一步要用 MedQuAD 的 12,799 条训练问答准备 SFT，并确认 TensorFlow/KerasHub 能从 CPT 产物继续训练。评测继续使用独立的 1,471 条验证题和 1,573 条测试题；测试集留到最终比较。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 
 如果之后尝试 DPO 或 GRPO，二者都从同一个 SFT 检查点独立分支。开始前要确定偏好数据、奖励规则和评测集；不能只凭奖励分数上涨就断定回答质量提高。若工具链或数据来不及确认，完成 Base→CPT→SFT 主线即可。

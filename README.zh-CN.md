@@ -192,14 +192,16 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 
 默认输出到运行目录下的 hf_export_multimodal，目标目录必须为空。先用 df -h . 检查磁盘空间；导出约需再存一份完整模型。脚本复制原始 Safetensors 文件，只替换 LoRA 训练过的 12 个文本 q/v 投影权重。权重精度、分片索引、完整配置、图像和视频 processor、tokenizer 及许可文件都会保留。脚本会用 SHA-256 检查其余权重字节（包括视觉编码器和视觉连接层）完全未变，并把 Base 快照信息和检查结果写入 export_report.json。原 adapter 也请保留。
 
-视觉权重保持原样，也需要检查看图效果，因为 CPT 改变了负责理解视觉特征的语言模型。目前尚未在训练服务器上验证完整导出。导出后，选一张本地 JPG/PNG，用独立环境执行 Transformers 加载和推理检查：
+保留视觉权重并不代表图像或视频效果没有变化：CPT 调整了负责理解视觉特征的语言模型。本次导出的 Hugging Face 模型已在 Transformers 中成功加载全部 617 项权重，并用生成的纯色测试图跑通了文本和图片推理。这只能确认模型能加载并接收图片输入，不能说明医学回答质量或真实图片理解能力保持不变。
+
+以后导出模型后，可以选一张本地 JPG/PNG，在独立环境中用 Transformers 检查：
 
     uv run --no-project --python 3.12 --with "transformers>=5.9,<6" --with torch --with torchvision --with pillow \
       python src/healthcpt/verify_hf.py \
       runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal \
       --image /path/to/test-image.jpg
 
-这会在训练环境之外安装可选的推理依赖，检查权重是否缺失、是否出现非法数值，并分别生成一小段文本和图片描述，结果写入 inference_check.json。这只能确认加载和推理能跑通；效果是否保持，需要让原始 Base 和合并模型回答同一批文本、图片问题进行比较。
+这会在训练环境之外安装可选的推理依赖。PyTorch 及其 CUDA 组件可能需要下载较大的文件；如果当前 Python 环境已经有支持 Qwen3.5 的 Transformers、PyTorch 和 Pillow，可以直接用 `python` 运行脚本。检查会确认权重没有缺失或多余、输出数值正常，并分别生成一小段文本和图片描述，结果写入 inference_check.json。这只能确认加载和推理能跑通；要比较效果，需要让原始 Base 和合并模型回答同一批文本、图片问题。
 
 ## 9. 常见提示和错误
 
@@ -227,4 +229,4 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 
 主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练模型，export_hf.py 合并训练完成的 adapter。checkpoint_files.py 负责复制和校验权重文件；verify_hf.py 提供可选的 Transformers 文本和图片推理检查。
 
-当前仓库包含数据处理、CPT 和 Hugging Face 格式导出。SFT 训练、自动问答质量评测、DPO 和 GRPO 训练命令尚未实现。
+Qwen3.5-2B 的 CPT 训练已经完成，完整 Hugging Face 格式模型也通过了基础的 Transformers 图文检查。训练参数、指标和检查范围见[研究概览](docs/research/README.md)。当前仓库包含数据处理、CPT 和模型导出；下一步是实现 SFT 和问答质量评测。DPO、GRPO 仍是可选扩展，尚未实现。

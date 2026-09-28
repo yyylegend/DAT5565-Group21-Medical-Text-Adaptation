@@ -220,6 +220,20 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 
 新版脚本会在开头显示检查点频率和位置，保存时不额外打印提示行，以免打断实时进度条。step、ETA 和 loss 在同一行动态变化是正常的。
 
+## 10. 做一次文本问答对比
+
+评测脚本会让 Base 模型和一个训练后的模型回答同一批 MedQuAD 问题。请在已经安装 PyTorch 和支持 Qwen3.5 的 Transformers 环境中运行。先抽 50 道验证题检查流程：
+
+    python src/healthcpt/evaluate_qa.py \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal \
+      --candidate-name CPT \
+      --qa-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/qa_eval_cpt_validation_pilot \
+      --limit 50
+
+两个模型使用相同的 `Question: ...\nAnswer:` 提示词和贪心生成设置。去掉 `--limit 50` 可评测全部验证题。脚本会把每题的模型回答写入 predictions.jsonl，并把汇总指标写入 metrics.json，包括 normalized exact match、token F1 和 ROUGE-L。这些指标衡量回答与参考答案的文字重合度，不能证明医学正确性；还要人工抽查。测试集留到 SFT 完成后的 Base 与最终模型对比。每次运行请使用一个新的空输出目录。
+
 ## 仓库里有什么
 
 - data/：原始来源和处理后的数据，不纳入 Git。
@@ -227,6 +241,6 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 - runs/：检查点、TensorBoard 日志、adapter 和运行记录，不纳入 Git。
 - docs/research/：中英文研究概览和研究笔记。
 
-主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练模型，export_hf.py 合并训练完成的 adapter。checkpoint_files.py 负责复制和校验权重文件；verify_hf.py 提供可选的 Transformers 文本和图片推理检查。
+主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练模型，export_hf.py 合并训练完成的 adapter。checkpoint_files.py 负责复制和校验权重文件；verify_hf.py 提供可选的 Transformers 文本和图片推理检查；evaluate_qa.py 用参考答案对比文本问答结果。
 
-Qwen3.5-2B 的 CPT 训练已经完成，完整 Hugging Face 格式模型也通过了基础的 Transformers 图文检查。训练参数、指标和检查范围见[研究概览](docs/research/README.md)。当前仓库包含数据处理、CPT 和模型导出；下一步是实现 SFT 和问答质量评测。DPO、GRPO 仍是可选扩展，尚未实现。
+Qwen3.5-2B 的 CPT 训练已经完成，完整 Hugging Face 格式模型也通过了基础的 Transformers 图文检查。训练参数、指标和检查范围见[研究概览](docs/research/README.md)。当前仓库包含数据处理、CPT、模型导出和文本问答评测脚本；SFT 训练和最终评测结果还未完成。DPO、GRPO 仍是可选扩展，尚未实现。

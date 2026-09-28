@@ -220,6 +220,20 @@ This installs optional inference packages outside the training environment. PyTo
 
 The current script prints the checkpoint frequency and location at startup, then saves quietly so checkpoint messages do not interrupt the live progress bar. The progress bar itself refreshes on one line by design.
 
+## 10. Run a text QA comparison
+
+The optional evaluator compares the Base model with one trained model on the same MedQuAD questions. Run it from a Python environment that already has PyTorch and a Qwen3.5-compatible Transformers version. Start with 50 validation questions to check the setup:
+
+    python src/healthcpt/evaluate_qa.py \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal \
+      --candidate-name CPT \
+      --qa-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/qa_eval_cpt_validation_pilot \
+      --limit 50
+
+Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to predictions.jsonl and summary metrics to metrics.json. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually, and keep the test set for the final Base-versus-SFT comparison. Choose a new, empty output folder for each run.
+
 ## Project files
 
 - data/: raw sources and processed datasets; not tracked by Git.
@@ -227,6 +241,6 @@ The current script prints the checkpoint frequency and location at startup, then
 - runs/: checkpoints, TensorBoard logs, adapters, and run summaries; not tracked by Git.
 - docs/research/: bilingual project overview and research notes.
 
-The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains the model, and export_hf.py merges a completed adapter. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check.
+The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains the model, and export_hf.py merges a completed adapter. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check; evaluate_qa.py compares text answers against a reference file.
 
-The Qwen3.5-2B CPT run is complete, and its full Hugging Face-format export has passed a basic Transformers text/image check. See the [research overview](docs/research/README.en.md) for the run settings, metrics, and limits. The repository currently provides data preparation, CPT, and Hugging Face export; SFT and final answer-quality evaluation are the next work. DPO and GRPO remain optional and are not implemented.
+The Qwen3.5-2B CPT run is complete, and its full Hugging Face-format export has passed a basic Transformers text/image check. See the [research overview](docs/research/README.en.md) for the run settings, metrics, and limits. The repository provides data preparation, CPT, Hugging Face export, and a text QA evaluation script; SFT training and final evaluation results are still to come. DPO and GRPO remain optional and are not implemented.

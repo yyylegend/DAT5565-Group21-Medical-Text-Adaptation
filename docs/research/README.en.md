@@ -58,7 +58,7 @@ flowchart LR
 
 The original MedQuAD splits remain unchanged. Separate cleaned evaluation files contain 1,471 validation questions and 1,573 test questions. They remove questions or answers that exactly repeat SFT training content. The current checks cover exact duplicates and some full-answer matches; they do not include a semantic near-duplicate audit, so they cannot guarantee that all knowledge overlap is gone.
 
-The Base and final SFT models should use the same questions, prompt, and generation settings. Planned evaluation includes automatic text-matching metrics and a manual sample review for relevance, missing information, and unsupported claims. The metrics and human-scoring rubric are not yet fixed. Similarity to a reference answer does not prove medical correctness or provide clinical validation.
+The Base and final SFT models should use the same questions, prompt, and generation settings. `evaluate_qa.py` reports normalized exact match, token F1, ROUGE-L, and per-question answers for later manual review of relevance, missing information, and unsupported claims. Text-overlap metrics do not establish medical correctness; the human-scoring rubric is still to be defined, and there is no clinical validation.
 
 ## Current status
 
@@ -67,7 +67,8 @@ The Base and final SFT models should use the same questions, prompt, and generat
 - On 2026-09-28, one epoch of Qwen3.5-2B-Base CPT completed with 24,240 training text examples and 1,645 validation examples, sequence length 512, batch size 1, LoRA rank 8, and peak learning rate 1e-4. Training loss was 0.920 and validation loss was 1.229; token accuracy was 0.570 and 0.538, respectively. These are next-token language-model metrics, not QA accuracy.
 - The full Hugging Face-format export is at `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`. It uses Base snapshot `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`, merges 12 text q/v projection weights, and preserves all 297 vision weights unchanged. The run folder keeps the CPT adapter and `run.json`; the export folder contains `export_report.json` and `inference_check.json`.
 - Transformers successfully loaded all 617 weights and completed text and image inference. The image check used a generated solid-color PNG, so it only confirms that the model loads and accepts image input. Real-image capability comparisons and medical QA evaluation remain undone.
-- SFT training and QA evaluation code are not implemented yet. The next step is to prepare SFT from the 12,799 MedQuAD training pairs and confirm that TensorFlow/KerasHub can continue from the CPT artifact. Keep the 1,471 validation questions and 1,573 test questions separate; reserve the test split for the final comparison.
+- `evaluate_qa.py` is available to compare Base with one candidate on the same text questions, but it has not been run and there are no QA-quality results yet. Use the 1,471 validation questions for the initial CPT check; keep the test split untouched for the final comparison after SFT.
+- SFT training code and a command are not implemented yet. The next step is to prepare SFT from the 12,799 MedQuAD training pairs and confirm that TensorFlow/KerasHub can continue from the CPT artifact.
 - Training targets a Linux GPU server with dependencies managed by `uv`. WSL is not needed to prepare or inspect the data locally.
 
 If DPO or GRPO is attempted later, both should branch independently from the same SFT checkpoint. Define and version the preference data, reward rule, and evaluation set before starting. A higher reward score alone does not prove that answers improved. If the toolchain or data are not ready in time, complete the Base→CPT→SFT workflow.

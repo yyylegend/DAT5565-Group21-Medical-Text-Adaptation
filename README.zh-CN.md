@@ -234,6 +234,40 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 
 两个模型使用相同的 `Question: ...\nAnswer:` 提示词和贪心生成设置。去掉 `--limit 50` 可评测全部验证题。脚本会把每题的模型回答写入 predictions.jsonl，并把汇总指标写入 metrics.json，包括 normalized exact match、token F1 和 ROUGE-L。这些指标衡量回答与参考答案的文字重合度，不能证明医学正确性；还要人工抽查。测试集留到 SFT 完成后的 Base 与最终模型对比。每次运行请使用一个新的空输出目录。
 
+## 11. 运行 SFT
+
+SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一个 Base 和 CPT LoRA adapter，再用 MedQuAD 问答训练。先跑小样本，确认软件、显存和输出正常：
+
+    uv run healthcpt sft-train \
+      runs/qwen3_5_2b_cpt_full_1epoch \
+      data/processed/medquad-v1/qa_train.jsonl \
+      data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      runs/qwen3_5_2b_sft_pilot \
+      --limit-train 128 --limit-validation 32 \
+      --sequence-length 512 --batch-size 1 --learning-rate 2e-5
+
+小样本正常后，用全部 12,799 条训练问答和 1,471 条验证问答运行一个 epoch：
+
+    uv run healthcpt sft-train \
+      runs/qwen3_5_2b_cpt_full_1epoch \
+      data/processed/medquad-v1/qa_train.jsonl \
+      data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      runs/qwen3_5_2b_sft_full_1epoch \
+      --limit-train 12799 --limit-validation 1471 \
+      --sequence-length 512 --batch-size 1 \
+      --learning-rate 2e-5 --warmup-ratio 0.05 \
+      --minimum-learning-rate-ratio 0.1 --checkpoint-steps 1000
+
+提示符里的进度条会显示 step、ETA、loss 和 token accuracy。TensorBoard 日志保存在运行目录下的 `tensorboard/`；训练中断后，使用完全相同的命令和目录即可从最近一次检查点继续。SFT 输入是一条完整的 `Question: ...\nAnswer: ...` 文本，KerasHub 会对问题和答案的非填充 token 计算下一个 token 损失。序列长度固定为 512；过长问答会被截断，因此正式结果要结合长答案截断风险解读。
+
+训练成功后，运行目录里的 `sft_adapter.lora.h5` 保存继续训练后的 CPT+SFT LoRA 更新，`run.json` 和 `training_config.json` 记录运行信息。它还不是独立模型。要导出完整的 Hugging Face 多模态模型，请使用训练时相同的 Base 快照：
+
+    uv run healthcpt export-hf runs/qwen3_5_2b_sft_full_1epoch \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --output-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal
+
+导出目录使用 Hugging Face Transformers 可读取的配置、tokenizer/processor 文件和 Safetensors 权重；视觉相关权重沿用原始 Base。训练 adapter 是 `.h5`，完整导出才是 Safetensors。导出后可用上一节的 `evaluate_qa.py`，将 `--candidate-dir` 指向新的 `hf_export_multimodal`，并用 `qa_test_eval.jsonl` 做最终 Base 与 CPT+SFT 对比。
+
 ## 仓库里有什么
 
 - data/：原始来源和处理后的数据，不纳入 Git。
@@ -241,6 +275,6 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 - runs/：检查点、TensorBoard 日志、adapter 和运行记录，不纳入 Git。
 - docs/research/：中英文研究概览和研究笔记。
 
-主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练模型，export_hf.py 合并训练完成的 adapter。checkpoint_files.py 负责复制和校验权重文件；verify_hf.py 提供可选的 Transformers 文本和图片推理检查；evaluate_qa.py 用参考答案对比文本问答结果。
+主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练 CPT，sft.py 从 CPT adapter 继续训练问答，export_hf.py 将训练 adapter 合并到完整 Hugging Face 模型。checkpoint_files.py 负责复制和校验权重文件；verify_hf.py 提供可选的 Transformers 文本和图片推理检查；evaluate_qa.py 用参考答案对比文本问答结果。
 
-Qwen3.5-2B 的 CPT 训练已经完成，完整 Hugging Face 格式模型也通过了基础的 Transformers 图文检查。训练参数、指标和检查范围见[研究概览](docs/research/README.md)。当前仓库包含数据处理、CPT、模型导出和文本问答评测脚本；SFT 训练和最终评测结果还未完成。DPO、GRPO 仍是可选扩展，尚未实现。
+Qwen3.5-2B 的 CPT 训练已经完成，完整 Hugging Face 格式模型也通过了基础的 Transformers 图文检查。SFT 训练和模型导出命令已加入，但尚未在服务器运行；最终评测结果也尚未完成。训练参数、指标和检查范围见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。

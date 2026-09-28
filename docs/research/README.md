@@ -77,7 +77,7 @@ Base 和最终 SFT 模型要用相同的问题、提示词和生成设置。`eva
   | CPT | 0.0000 | 0.2345 | 0.1639 |
 
   结果没有显示一致的文字重合度提升，不能据此判断医学回答能力变好或变差；还需要人工抽查。逐题预测和完整汇总保存在服务器 `runs/qa_eval_cpt_validation_500/`，不纳入 Git。测试集仍留到 SFT 完成后的最终比较。
-- SFT 训练代码和命令尚未实现。下一步要用 MedQuAD 的 12,799 条训练问答准备 SFT，并确认 TensorFlow/KerasHub 能从 CPT 产物继续训练。
+- SFT 训练入口和导出命令已加入个人工作分支 `runqi/sft-work`，但尚未在服务器运行。它从同一 Base 和 CPT LoRA adapter 继续训练，使用 MedQuAD 的 12,799 条训练问答与 1,471 条清理后的验证问答，先运行 1 个 epoch。训练完成后 adapter 仍是 `.h5`；`export-hf` 会把累计的 CPT+SFT 更新合并到原始 Base 的 Safetensors 模型中并保留视觉权重。512-token 序列会截断更长的问答样本；token 截断比例尚未统计。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 
 如果之后尝试 DPO 或 GRPO，二者都从同一个 SFT 检查点独立分支。开始前要确定偏好数据、奖励规则和评测集；不能只凭奖励分数上涨就断定回答质量提高。若工具链或数据来不及确认，完成 Base→CPT→SFT 主线即可。

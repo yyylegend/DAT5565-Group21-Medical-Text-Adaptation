@@ -75,7 +75,7 @@ The Base and final SFT models should use the same questions, prompt, and generat
   | CPT | 0.0000 | 0.2345 | 0.1639 |
 
   The results show mixed text-overlap scores and do not establish a clear QA improvement or decline. Manual review is still needed. Per-question predictions and the full summary are on the server in `runs/qa_eval_cpt_validation_500/`; they are not tracked by Git. Keep the test split for the final Base-versus-CPT+SFT comparison.
-- SFT training code and a command are not implemented yet. The next step is to prepare SFT from the 12,799 MedQuAD training pairs and confirm that TensorFlow/KerasHub can continue from the CPT artifact.
+- SFT training and export commands are available on the personal work branch `runqi/sft-work`, but have not yet been run on the server. Training reloads the same Base and CPT LoRA adapter, then uses 12,799 MedQuAD training pairs and 1,471 cleaned validation pairs for one epoch. The training artifact remains an `.h5` adapter; `export-hf` merges the accumulated CPT+SFT update into the original Base Safetensors model and preserves its vision weights. The 512-token sequence truncates longer QA examples; the truncation rate has not been measured.
 - Training targets a Linux GPU server with dependencies managed by `uv`. WSL is not needed to prepare or inspect the data locally.
 
 If DPO or GRPO is attempted later, both should branch independently from the same SFT checkpoint. Define and version the preference data, reward rule, and evaluation set before starting. A higher reward score alone does not prove that answers improved. If the toolchain or data are not ready in time, complete the Base→CPT→SFT workflow.

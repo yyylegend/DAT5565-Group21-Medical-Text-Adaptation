@@ -40,16 +40,19 @@ def encode_tensor(values, entry: dict) -> dict:
 
 
 def export_hf(run_dir: Path, base_dir: Path, output_dir: Path | None = None) -> dict:
-    """Preserve original vision weights and replace only trained text projections."""
+    """Merge a trained text adapter while preserving the original vision weights."""
     run_dir, base_dir = run_dir.resolve(), base_dir.resolve()
-    for name in ("run.json", "training_config.json", "cpt_adapter.lora.h5"):
-        if not (run_dir / name).is_file():
-            raise FileNotFoundError(
-                f"A completed CPT run must contain {run_dir / name}"
-            )
+    if not (run_dir / "training_config.json").is_file():
+        raise FileNotFoundError(f"Training configuration not found in {run_dir}")
     settings = json.loads(
         (run_dir / "training_config.json").read_text(encoding="utf-8")
     )
+    adapter_name = settings.get("adapter_filename", "cpt_adapter.lora.h5")
+    for name in ("run.json", "training_config.json", adapter_name):
+        if not (run_dir / name).is_file():
+            raise FileNotFoundError(
+                f"A completed training run must contain {run_dir / name}"
+            )
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     if settings["lora_rank"] < 1:
         raise ValueError("This exporter requires a LoRA training run.")
@@ -105,7 +108,7 @@ def export_hf(run_dir: Path, base_dir: Path, output_dir: Path | None = None) -> 
         str(base_dir), vision_encoder=None
     )
     backbone.enable_lora(rank=settings["lora_rank"])
-    backbone.load_lora_weights(str(run_dir / "cpt_adapter.lora.h5"))
+    backbone.load_lora_weights(str(run_dir / adapter_name))
 
     updates = {}
     mapped_layers = set()
@@ -149,21 +152,21 @@ def export_hf(run_dir: Path, base_dir: Path, output_dir: Path | None = None) -> 
             "base_preset": settings["preset"],
             "base_snapshot_name": base_dir.name,
             "base_revision_recorded_during_training": False,
-            "adapter_sha256": hashlib.sha256(
-                (run_dir / "cpt_adapter.lora.h5").read_bytes()
-            ).hexdigest(),
+            "adapter_file": adapter_name,
+            "adapter_sha256": hashlib.sha256((run_dir / adapter_name).read_bytes()).hexdigest(),
             "updated_tensors": sorted(updates),
             "keras": keras.__version__,
             "keras_hub": keras_hub.__version__,
             "multimodal_inference_tested": False,
-            "note": "Original vision bytes are preserved. Image/video quality after text CPT is untested.",
+            "note": "Original vision bytes are preserved. Image/video quality after text adaptation is untested.",
         }
     )
     for name in ("run.json", "training_config.json"):
         (output_dir / name).write_bytes((run_dir / name).read_bytes())
+    stage = run.get("stage", "CPT")
     (output_dir / "README.md").write_text(
-        "# Qwen3.5-2B medical CPT checkpoint\n\n"
-        "Base: Qwen/Qwen3.5-2B-Base. Text LoRA updates were merged after CPT.\n"
+        "# Qwen3.5-2B medical model\n\n"
+        f"Base: Qwen/Qwen3.5-2B-Base. Text LoRA updates were merged for {stage}.\n"
         "Original vision weights, processor, tokenizer, and configuration are preserved.\n"
         "This is a Base model adapted on text; image/video quality has not been evaluated.\n"
         "See export_report.json for the merge checks and training files for settings.\n",

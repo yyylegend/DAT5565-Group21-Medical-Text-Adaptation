@@ -234,6 +234,40 @@ The optional evaluator compares the Base model with one trained model on the sam
 
 Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to predictions.jsonl and summary metrics to metrics.json. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually, and keep the test set for the final Base-versus-SFT comparison. Choose a new, empty output folder for each run.
 
+## 11. Run SFT
+
+SFT continues from a completed CPT run. It reloads the same Base model and CPT LoRA adapter, then trains on MedQuAD question-answer pairs. Start with a small pilot to check the software setup and GPU memory:
+
+    uv run healthcpt sft-train \
+      runs/qwen3_5_2b_cpt_full_1epoch \
+      data/processed/medquad-v1/qa_train.jsonl \
+      data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      runs/qwen3_5_2b_sft_pilot \
+      --limit-train 128 --limit-validation 32 \
+      --sequence-length 512 --batch-size 1 --learning-rate 2e-5
+
+If the pilot runs correctly, train for one epoch on all 12,799 training pairs and 1,471 validation pairs:
+
+    uv run healthcpt sft-train \
+      runs/qwen3_5_2b_cpt_full_1epoch \
+      data/processed/medquad-v1/qa_train.jsonl \
+      data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      runs/qwen3_5_2b_sft_full_1epoch \
+      --limit-train 12799 --limit-validation 1471 \
+      --sequence-length 512 --batch-size 1 \
+      --learning-rate 2e-5 --warmup-ratio 0.05 \
+      --minimum-learning-rate-ratio 0.1 --checkpoint-steps 1000
+
+The progress bar shows steps, ETA, loss, and token accuracy. TensorBoard logs go to `tensorboard/` inside the run folder. After an interruption, rerun the exact same command with the same folder to resume from the latest checkpoint. Each input is the full `Question: ...\nAnswer: ...` text, and KerasHub calculates next-token loss on all non-padding question and answer tokens. The sequence length is fixed at 512, so long examples are truncated and should be considered when interpreting results.
+
+After training, `sft_adapter.lora.h5` contains the continued CPT+SFT LoRA updates; `run.json` and `training_config.json` record the run. The adapter is not a standalone model. Export the full Hugging Face multimodal model using the same Base snapshot as CPT:
+
+    uv run healthcpt export-hf runs/qwen3_5_2b_sft_full_1epoch \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --output-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal
+
+The export folder contains the Hugging Face configuration, tokenizer/processor files, and Safetensors weights; vision-related weights are copied from the original Base model. The training adapter is `.h5`; the complete export uses Safetensors. Then run `evaluate_qa.py` with `--candidate-dir` pointing to this `hf_export_multimodal` folder and `qa_test_eval.jsonl` for the final Base-versus-CPT+SFT comparison.
+
 ## Project files
 
 - data/: raw sources and processed datasets; not tracked by Git.
@@ -241,6 +275,6 @@ Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding
 - runs/: checkpoints, TensorBoard logs, adapters, and run summaries; not tracked by Git.
 - docs/research/: bilingual project overview and research notes.
 
-The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains the model, and export_hf.py merges a completed adapter. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check; evaluate_qa.py compares text answers against a reference file.
+The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains CPT, sft.py continues from the CPT adapter on QA examples, and export_hf.py merges a trained adapter into the full Hugging Face model. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check; evaluate_qa.py compares text answers against a reference file.
 
-The Qwen3.5-2B CPT run is complete, and its full Hugging Face-format export has passed a basic Transformers text/image check. See the [research overview](docs/research/README.en.md) for the run settings, metrics, and limits. The repository provides data preparation, CPT, Hugging Face export, and a text QA evaluation script; SFT training and final evaluation results are still to come. DPO and GRPO remain optional and are not implemented.
+The Qwen3.5-2B CPT run is complete, and its full Hugging Face-format export has passed a basic Transformers text/image check. SFT training and export commands are now included but have not yet been run on the server; final evaluation results are still pending. See the [research overview](docs/research/README.en.md) for the run settings, metrics, and limits. DPO and GRPO remain optional and are not implemented.

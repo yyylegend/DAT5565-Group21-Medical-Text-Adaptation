@@ -179,9 +179,27 @@ If you need to update the repository while training is in progress, wait until a
 
 The training settings and data hashes are checked when resuming. Keep the command and data files unchanged. A completed run has an adapter and run.json; export it instead of starting CPT again:
 
-    uv run healthcpt export-hf runs/qwen3_5_2b_cpt_full_1epoch
+The exporter preserves the original multimodal components. First locate the full Base snapshot downloaded for training:
 
-The export folder contains a merged model.safetensors file, model configuration, and tokenizer files. It is text-only because CPT omits the Qwen3.5 vision encoder.
+    find models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots -mindepth 1 -maxdepth 1 -type d
+
+The current run used snapshot b1485b2fa6dfa1287294f269f5fb618e03d52d7c. Use that local directory as --base-dir:
+
+    uv run healthcpt export-hf runs/qwen3_5_2b_cpt_full_1epoch \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c
+
+For another run, replace the snapshot folder with the one printed by find. Use the cache path from the training environment if HF_HOME was elsewhere. The command reads that local Base and never downloads a newer version. The training record did not store the Base revision, so keep the selected snapshot with the export record.
+
+The default output is hf_export_multimodal inside the run folder; it must be empty. Check free space with df -h . first; the output needs roughly one more full model copy. The exporter copies the original Safetensors files and replaces only the 12 text q/v projection tensors trained by LoRA. It keeps the original tensor dtypes, shard index, full config, image/video processor, tokenizer, and license files. It checks by SHA-256 that every other weight byte, including the vision encoder and visual merger, is unchanged. export_report.json records the selected Base snapshot and these checks. Keep the original adapter too.
+
+Preserving vision weights does not establish unchanged image/video quality: text CPT changes the language model that interprets visual features. The full export has not yet been tested on the training server. After exporting, use a local JPG/PNG for this separate Transformers loading and inference check:
+
+    uv run --no-project --python 3.12 --with "transformers>=5.9,<6" --with torch --with torchvision --with pillow \
+      python src/healthcpt/verify_hf.py \
+      runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal \
+      --image /path/to/test-image.jpg
+
+This installs optional inference packages outside the training environment. It checks missing/unexpected weights, finite logits, and short text/image generation, then writes inference_check.json. It is a compatibility check, not a quality benchmark. For quality evaluation, compare the original Base and merged model on the same text and image examples.
 
 ## 9. Common messages and errors
 
@@ -207,6 +225,6 @@ The current script prints the checkpoint frequency and location at startup, then
 - runs/: checkpoints, TensorBoard logs, adapters, and run summaries; not tracked by Git.
 - docs/research/: bilingual project overview and research notes.
 
-The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains the model, and export_hf.py exports a completed adapter.
+The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains the model, and export_hf.py merges a completed adapter. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check.
 
 The repository currently provides data preparation, CPT, and Hugging Face export. SFT, final answer-quality evaluation, DPO, and GRPO training commands are not implemented yet.

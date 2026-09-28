@@ -50,7 +50,7 @@ def main() -> None:
     cpt_parser.add_argument("--minimum-learning-rate-ratio", type=float, default=0.1)
     cpt_parser.add_argument("--checkpoint-steps", type=int, default=2000)
     export_parser = commands.add_parser(
-        "export-hf", help="Export a completed Qwen3.5 CPT LoRA run to Safetensors"
+        "export-hf", help="Merge CPT text updates into a full Qwen3.5 multimodal model"
     )
     export_parser.add_argument(
         "run_dir",
@@ -58,9 +58,15 @@ def main() -> None:
         help="Completed CPT run folder containing run.json and the LoRA adapter",
     )
     export_parser.add_argument(
+        "--base-dir",
+        type=Path,
+        required=True,
+        help="Original full HF Base snapshot used for training (local directory)",
+    )
+    export_parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Folder for the exported model (default: <run_dir>/hf_export)",
+        help="Empty export folder (default: <run_dir>/hf_export_multimodal)",
     )
     args = parser.parse_args()
 
@@ -110,7 +116,7 @@ def main() -> None:
     else:
         from .export_hf import export_hf
 
-        result = export_hf(args.run_dir, args.output_dir)
+        result = export_hf(args.run_dir, args.base_dir, args.output_dir)
     print(json.dumps(result, indent=2))
 
 

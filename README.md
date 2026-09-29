@@ -232,7 +232,7 @@ The optional evaluator compares the Base model with one trained model on the sam
       --output-dir runs/qa_eval_cpt_validation_pilot \
       --limit 50
 
-Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to predictions.jsonl and summary metrics to metrics.json. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually, and keep the test set for the final Base-versus-SFT comparison. Choose a new, empty output folder for each run.
+Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to predictions.jsonl and summary metrics to metrics.json. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually. Validation is for development comparisons; a seeded 200-question test sample has now been used to compare Base, CPT, and CPT+SFT, while the full 1,573-row test file remains unevaluated. See the [research overview](docs/research/README.en.md) for those results and limits. Choose a new, empty output folder for each run.
 
 ## 11. Run SFT
 
@@ -277,4 +277,4 @@ The export folder contains the Hugging Face configuration, tokenizer/processor f
 
 The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains CPT, sft.py continues from the CPT adapter on QA examples, and export_hf.py merges a trained adapter into the full Hugging Face model. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check; evaluate_qa.py compares text answers against a reference file.
 
-The Qwen3.5-2B CPT run is complete, and its full Hugging Face-format export has passed a basic Transformers text/image check. SFT training and export commands are now included but have not yet been run on the server; final evaluation results are still pending. See the [research overview](docs/research/README.en.md) for the run settings, metrics, and limits. DPO and GRPO remain optional and are not implemented.
+Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. Seeded 200-question validation and test samples have been evaluated; the full test file and manual answer review remain pending. See the [research overview](docs/research/README.en.md) for run settings, results, and limits. DPO and GRPO remain optional and are not implemented.

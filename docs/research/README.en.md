@@ -58,7 +58,7 @@ flowchart LR
 
 The original MedQuAD splits remain unchanged. Separate cleaned evaluation files contain 1,471 validation questions and 1,573 test questions. They remove questions or answers that exactly repeat SFT training content. The current checks cover exact duplicates and some full-answer matches; they do not include a semantic near-duplicate audit, so they cannot guarantee that all knowledge overlap is gone.
 
-The Base and final SFT models should use the same questions, prompt, and generation settings. `evaluate_qa.py` uses the `Question: {question}\nAnswer:` prompt with greedy decoding, and reports normalized exact match, token F1, ROUGE-L, and per-question answers for manual review of relevance, missing information, and unsupported claims. Text-overlap metrics do not establish medical correctness; the human-scoring rubric is still to be defined, and there is no clinical validation.
+The Base, CPT, and CPT+SFT models use the same questions, prompt, and generation settings. `evaluate_qa.py` uses the `Question: {question}\nAnswer:` prompt with greedy decoding, and reports normalized exact match, token F1, ROUGE-L, and per-question answers for manual review of relevance, missing information, and unsupported claims. Text-overlap metrics do not establish medical correctness; the human-scoring rubric is still to be defined, and there is no clinical validation.
 
 ## Current status
 
@@ -67,15 +67,20 @@ The Base and final SFT models should use the same questions, prompt, and generat
 - On 2026-09-28, one epoch of Qwen3.5-2B-Base CPT completed with 24,240 training text examples and 1,645 validation examples, sequence length 512, batch size 1, LoRA rank 8, and peak learning rate 1e-4. Training loss was 0.920 and validation loss was 1.229; token accuracy was 0.570 and 0.538, respectively. These are next-token language-model metrics, not QA accuracy.
 - The full Hugging Face-format export is at `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`. It uses Base snapshot `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`, merges 12 text q/v projection weights, and preserves all 297 vision weights unchanged. The run folder keeps the CPT adapter and `run.json`; the export folder contains `export_report.json` and `inference_check.json`.
 - Transformers successfully loaded all 617 weights and completed text and image inference. The image check used a generated solid-color PNG, so it only confirms that the model loads and accepts image input. Real-image capability comparisons and manual QA review remain undone.
-- `evaluate_qa.py` compared Base and CPT on a seeded sample of 200 questions from the 1,471-row `qa_validation_eval.jsonl`, using the `Question: {question}\nAnswer:` prompt, greedy decoding, and a 128-token generation limit:
+- SFT completed one epoch on the server with 12,799 QA training pairs and 1,471 validation pairs, sequence length 512, batch size 1, LoRA rank 8, learning rate 2e-5, and 639 warmup steps. Validation loss was 0.6134 and token accuracy was 0.7025; training loss was 0.5879 and token accuracy was 0.6993. These are next-token metrics on concatenated QA text, not medical-answer accuracy. Long examples may be truncated at 512 tokens; the rate has not been measured.
+- The full Hugging Face SFT export is at `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal`. It merges the cumulative CPT+SFT LoRA update into the original Base Safetensors model and preserves the original vision weights.
+- `evaluate_qa.py` used the same prompt, greedy decoding, a 128-token limit, and seed 5565 in the following four 200-example evaluations. Each row lists Base and candidate scores from the same paired run:
 
-  | Model | Normalized exact match | Token F1 | ROUGE-L F1 |
-  |---|---:|---:|---:|
-  | Base | 0.0000 | 0.2499 | 0.1606 |
-  | CPT | 0.0000 | 0.2345 | 0.1639 |
+  | Split | Candidate | Base token F1 | Candidate token F1 | Base ROUGE-L | Candidate ROUGE-L |
+  |---|---|---:|---:|---:|---:|
+  | Validation, n=200 | CPT | 0.2499 | 0.2345 | 0.1606 | 0.1639 |
+  | Validation, n=200 | CPT+SFT | 0.2486 | 0.3421 | 0.1598 | 0.2702 |
+  | Test, n=200 | CPT | 0.2540 | 0.2332 | 0.1582 | 0.1638 |
+  | Test, n=200 | CPT+SFT | 0.2586 | 0.3248 | 0.1600 | 0.2622 |
 
-  The results show mixed text-overlap scores and do not establish a clear QA improvement or decline. Manual review is still needed. Per-question predictions and the full summary are on the server in `runs/qa_eval_cpt_validation_500/`; they are not tracked by Git. Keep the test split for the final Base-versus-CPT+SFT comparison.
-- SFT training and export commands are available on the personal work branch `runqi/sft-work`, but have not yet been run on the server. Training reloads the same Base and CPT LoRA adapter, then uses 12,799 MedQuAD training pairs and 1,471 cleaned validation pairs for one epoch. The training artifact remains an `.h5` adapter; `export-hf` merges the accumulated CPT+SFT update into the original Base Safetensors model and preserves its vision weights. The 512-token sequence truncates longer QA examples; the truncation rate has not been measured.
+  Normalized exact match was 0 for all four model runs, and there were no empty predictions. CPT had lower token F1 and slightly higher ROUGE-L than its paired Base run. CPT+SFT scored higher than its paired Base on both text-overlap metrics in both 200-example samples. These preliminary results do not establish medical correctness. The two test runs used the same file hash, seed, and generation settings, but their Base scores varied slightly; interpret the paired scores within each run rather than treating Base values from different runs as identical. Per-question predictions and JSON summaries are on the server under `runs/qa_eval_*`; they are not tracked by Git.
+- The test file contains 1,573 rows; only a seed-5565 sample of 200 has been evaluated so far. The full test split has not been run. MedQuAD is public, but this held-out split comes from the same dataset family as the training data; if time allows, add a small independent consumer-health QA evaluation.
+- SFT training and export are on the personal work branch `runqi/sft-work`. The `main` branch remains the CPT baseline for now; decide whether to merge the completed SFT pipeline after results and documentation are finalized.
 - Training targets a Linux GPU server with dependencies managed by `uv`. WSL is not needed to prepare or inspect the data locally.
 
 If DPO or GRPO is attempted later, both should branch independently from the same SFT checkpoint. Define and version the preference data, reward rule, and evaluation set before starting. A higher reward score alone does not prove that answers improved. If the toolchain or data are not ready in time, complete the Base→CPT→SFT workflow.

@@ -60,7 +60,7 @@ flowchart LR
 
 原始 MedQuAD 划分保持不变。另生成去重后的 `qa_validation_eval.jsonl`（1,471 条）和 `qa_test_eval.jsonl`（1,573 条）。它们去掉了与 SFT 训练重复的问题或答案；当前检查是精确重复和部分完整答案匹配，还没有做语义近重复审查，不能保证所有知识重叠都已消除。
 
-Base 和最终 SFT 模型要用相同的问题、提示词和生成设置。`evaluate_qa.py` 使用 `Question: {question}\nAnswer:` 提示词和贪心生成，输出 normalized exact match、token F1、ROUGE-L 和逐题答案，方便人工抽查相关性、信息遗漏及无依据说法。文字重合指标不代表医学正确；人工评分规则还要确定，也没有临床验证。
+Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。`evaluate_qa.py` 使用 `Question: {question}\nAnswer:` 提示词和贪心生成，输出 normalized exact match、token F1、ROUGE-L 和逐题答案，方便人工抽查相关性、信息遗漏及无依据说法。文字重合指标不代表医学正确；人工评分规则还要确定，也没有临床验证。
 
 ## 当前进度
 
@@ -69,15 +69,20 @@ Base 和最终 SFT 模型要用相同的问题、提示词和生成设置。`eva
 - 2026-09-28，Qwen3.5-2B-Base 的 CPT 完成 1 个 epoch：24,240 条训练文本、1,645 条验证文本，序列长度 512、batch size 1、LoRA rank 8，峰值学习率 1e-4。训练 loss 为 0.920，验证 loss 为 1.229；token accuracy 分别为 0.570 和 0.538。这些是语言模型的下一个 token 预测指标，不是问答正确率。
 - 完整 Hugging Face 格式模型导出到 `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`。导出基于 Base 快照 `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`，合并了 12 个文本 q/v 投影权重，并原样保留 297 个视觉权重。训练目录保留 CPT adapter 和 `run.json`；导出目录含 `export_report.json` 与 `inference_check.json`。
 - Transformers 检查成功加载 617 项权重，并完成了文本和图片推理。图片检查使用的是生成的纯色 PNG，所以只能说明模型能加载并接收图片输入；真实图片能力比较和人工问答质量评审尚未完成。
-- `evaluate_qa.py` 已在 `qa_validation_eval.jsonl` 的 1,471 条验证题中，用随机种子 5565 抽取 200 题，对比 Base 与 CPT。生成采用 `Question: {question}\nAnswer:`、贪心解码和最多 128 个新 token：
+- SFT 已在服务器完成 1 个 epoch：12,799 条训练问答、1,471 条验证问答，sequence length 512、batch size 1、LoRA rank 8、learning rate 2e-5、639 warmup steps。验证 loss 为 0.6134，token accuracy 为 0.7025；训练 loss 为 0.5879，token accuracy 为 0.6993。这些是拼接问答文本的 next-token 指标，不是医学问答正确率。长样本可能被 512-token 长度截断，截断比例未统计。
+- SFT 完整 Hugging Face 导出位于 `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal`。它将累计的 CPT+SFT LoRA 更新合并到原始 Base Safetensors 模型，并保留原始视觉权重。
+- `evaluate_qa.py` 当前运行设置为同一提示词、贪心生成、最多 128 个新 token、随机种子 5565。四次 200 题抽样结果如下；每行中的 Base 和候选模型来自同一次配对评测：
 
-  | 模型 | Normalized exact match | Token F1 | ROUGE-L F1 |
-  |---|---:|---:|---:|
-  | Base | 0.0000 | 0.2499 | 0.1606 |
-  | CPT | 0.0000 | 0.2345 | 0.1639 |
+  | Split | Candidate | Base token F1 | Candidate token F1 | Base ROUGE-L | Candidate ROUGE-L |
+  |---|---|---:|---:|---:|---:|
+  | Validation, n=200 | CPT | 0.2499 | 0.2345 | 0.1606 | 0.1639 |
+  | Validation, n=200 | CPT+SFT | 0.2486 | 0.3421 | 0.1598 | 0.2702 |
+  | Test, n=200 | CPT | 0.2540 | 0.2332 | 0.1582 | 0.1638 |
+  | Test, n=200 | CPT+SFT | 0.2586 | 0.3248 | 0.1600 | 0.2622 |
 
-  结果没有显示一致的文字重合度提升，不能据此判断医学回答能力变好或变差；还需要人工抽查。逐题预测和完整汇总保存在服务器 `runs/qa_eval_cpt_validation_500/`，不纳入 Git。测试集仍留到 SFT 完成后的最终比较。
-- SFT 训练入口和导出命令已加入个人工作分支 `runqi/sft-work`，但尚未在服务器运行。它从同一 Base 和 CPT LoRA adapter 继续训练，使用 MedQuAD 的 12,799 条训练问答与 1,471 条清理后的验证问答，先运行 1 个 epoch。训练完成后 adapter 仍是 `.h5`；`export-hf` 会把累计的 CPT+SFT 更新合并到原始 Base 的 Safetensors 模型中并保留视觉权重。512-token 序列会截断更长的问答样本；token 截断比例尚未统计。
+  四次评测的 normalized exact match 都为 0，且没有空回答。CPT 的 Token F1 低于同次 Base，ROUGE-L 略高；CPT+SFT 在这两个 200 题样本里的两项文字重合指标都高于同次 Base。这是初步结果，不证明医学回答正确。两次测试运行使用同一文件哈希、seed 和生成设置，但 Base 指标略有波动，因此应按每次运行内部的配对值解读，不要把不同运行的 Base 分数当成完全相同的基线。逐题回答和 JSON 汇总分别保存在服务器 `runs/qa_eval_*` 目录，不纳入 Git。
+- 测试集共有 1,573 条记录，目前只评了按 seed 5565 抽取的 200 条；全量测试尚未运行。MedQuAD 是公开数据，但与训练数据来自同一数据集体系，因此将来若时间允许，可再用小型独立消费者健康问答集补充外部评测。
+- SFT 训练与导出入口已在个人工作分支 `runqi/sft-work`。主分支仍作为 CPT 基线；待最终结果和文档定稿后，再决定是否合并完整 SFT 流程。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 
 如果之后尝试 DPO 或 GRPO，二者都从同一个 SFT 检查点独立分支。开始前要确定偏好数据、奖励规则和评测集；不能只凭奖励分数上涨就断定回答质量提高。若工具链或数据来不及确认，完成 Base→CPT→SFT 主线即可。

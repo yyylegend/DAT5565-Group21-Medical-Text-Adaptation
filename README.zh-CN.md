@@ -232,7 +232,7 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
       --output-dir runs/qa_eval_cpt_validation_pilot \
       --limit 50
 
-两个模型使用相同的 `Question: ...\nAnswer:` 提示词和贪心生成设置。去掉 `--limit 50` 可评测全部验证题。脚本会把每题的模型回答写入 predictions.jsonl，并把汇总指标写入 metrics.json，包括 normalized exact match、token F1 和 ROUGE-L。这些指标衡量回答与参考答案的文字重合度，不能证明医学正确性；还要人工抽查。测试集留到 SFT 完成后的 Base 与最终模型对比。每次运行请使用一个新的空输出目录。
+两个模型使用相同的 `Question: ...\nAnswer:` 提示词和贪心生成设置。去掉 `--limit 50` 可评测全部验证题。脚本会把每题的模型回答写入 predictions.jsonl，并把汇总指标写入 metrics.json，包括 normalized exact match、token F1 和 ROUGE-L。这些指标衡量回答与参考答案的文字重合度，不能证明医学正确性；还要人工抽查。验证集用于开发阶段比较；当前已在测试集抽取 200 题做 Base、CPT 和 CPT+SFT 对比，全量 1,573 题尚未运行。测试集抽样结果及限制见[研究概览](docs/research/README.md)。每次运行请使用一个新的空输出目录。
 
 ## 11. 运行 SFT
 
@@ -277,4 +277,4 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 
 主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练 CPT，sft.py 从 CPT adapter 继续训练问答，export_hf.py 将训练 adapter 合并到完整 Hugging Face 模型。checkpoint_files.py 负责复制和校验权重文件；verify_hf.py 提供可选的 Transformers 文本和图片推理检查；evaluate_qa.py 用参考答案对比文本问答结果。
 
-Qwen3.5-2B 的 CPT 训练已经完成，完整 Hugging Face 格式模型也通过了基础的 Transformers 图文检查。SFT 训练和模型导出命令已加入，但尚未在服务器运行；最终评测结果也尚未完成。训练参数、指标和检查范围见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。
+Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。验证集和测试集的 200 题抽样结果已记录；全量测试集和人工回答审查尚未完成。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。

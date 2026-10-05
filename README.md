@@ -2,7 +2,25 @@
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 
-This README walks through the project from a new Linux GPU server to a running CPT job. Run these commands in an SSH terminal connected to the server, not in Windows PowerShell. The project plan and data decisions are in the [research overview](docs/research/README.en.md).
+This README walks through the project from a new Linux GPU server to CPT, SFT, and foundational LSTM experiments. Run these commands in an SSH terminal connected to the server, not in Windows PowerShell. The project plan and data decisions are in the [research overview](docs/research/README.en.md).
+
+## Which branch to use
+
+| Name | Purpose |
+|---|---|
+| `main` | Stable completed CPT baseline; SFT/LSTM work has not been merged. |
+| `runqi/sft-work` | Active course-project branch covering CPT, SFT, LSTM, export, and evaluation. Its existing name is retained for server checkouts. |
+| `cpt-baseline-2026-09-28` | CPT baseline tag fixed at `5800729`, so it remains accessible after future updates to `main`. |
+
+The installation instructions below clone the active work branch. For an existing checkout:
+
+    git fetch origin
+    git switch runqi/sft-work
+    git pull --ff-only
+
+CPT/SFT training and 200-question sampled evaluations are complete. The current required work is the LSTM pilot, full training, and comparison on the same test questions. After runtime checks and result documentation, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO experiments get separate branches.
+
+TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 
 ## 1. What you need
 
@@ -42,7 +60,7 @@ If sudo is not installed and your prompt is root, that is normal: omit sudo. The
 Find the persistent-disk mount path in your cloud provider. It varies by server. Replace the first path below with that mount point:
 
     cd /path/to/your/persistent-disk
-    git clone https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
+    git clone --branch runqi/sft-work https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
     cd DAT5565-Group21-Medical-Text-Adaptation
     uv sync --locked --python 3.12
     uv run python --version
@@ -62,9 +80,14 @@ For later QA evaluation, also upload:
     data/processed/cpt-medical-v3/qa_test_eval.jsonl
     data/processed/cpt-medical-v3/manifest.json
 
+SFT and LSTM training also require:
+
+    data/processed/medquad-v1/qa_train.jsonl
+    data/processed/medquad-v1/manifest.json
+
 Create the destination folder before transferring files:
 
-    mkdir -p data/processed/cpt-medical-v3
+    mkdir -p data/processed/cpt-medical-v3 data/processed/medquad-v1
 
 You can use your provider's file browser or scp. Keep the file names and folder structure shown above. The current CPT files contain 24,240 training text chunks and 1,645 validation chunks.
 
@@ -123,7 +146,7 @@ You are now inside tmux. Set the model cache in this shell before the first mode
 
 This short run checks model loading, GPU access, and adapter saving before the full dataset run:
 
-    uv run healthcpt cpt-pilot \
+    uv run healthcpt cpt-train \
       data/processed/cpt-medical-v3/cpt_train.jsonl \
       data/processed/cpt-medical-v3/cpt_validation.jsonl \
       runs/qwen3_5_2b_cpt_pilot \
@@ -133,7 +156,7 @@ This short run checks model loading, GPU access, and adapter saving before the f
 
 ### Full CPT run
 
-    uv run healthcpt cpt-pilot \
+    uv run healthcpt cpt-train \
       data/processed/cpt-medical-v3/cpt_train.jsonl \
       data/processed/cpt-medical-v3/cpt_validation.jsonl \
       runs/qwen3_5_2b_cpt_full_1epoch \
@@ -274,7 +297,7 @@ The instructor approved at least 10,000 medical text records or QA pairs and req
 
 Start with a pilot inside tmux:
 
-    uv run python -m healthcpt.lstm_baseline train \
+    uv run healthcpt lstm-train \
       --train-file data/processed/medquad-v1/qa_train.jsonl \
       --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
       --output-dir runs/lstm_qa_pilot \
@@ -282,7 +305,7 @@ Start with a pilot inside tmux:
 
 Then train on all pairs for at most five epochs with validation-loss early stopping:
 
-    uv run python -m healthcpt.lstm_baseline train \
+    uv run healthcpt lstm-train \
       --train-file data/processed/medquad-v1/qa_train.jsonl \
       --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
       --output-dir runs/lstm_qa_full \
@@ -293,7 +316,7 @@ The best full model (`model.keras`) and latest model (`latest.keras`) are saved 
 
 Evaluate the same 200 test questions and reuse the saved Qwen answers:
 
-    uv run python -m healthcpt.lstm_baseline evaluate \
+    uv run healthcpt lstm-evaluate \
       --model-dir runs/lstm_qa_full \
       --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
       --output-dir runs/qa_eval_lstm_test_200 --limit 200 --seed 5565 \
@@ -308,6 +331,15 @@ The script verifies question, reference, source-line, and data-hash alignment be
 - runs/: checkpoints, TensorBoard logs, adapters, and run summaries; not tracked by Git.
 - docs/research/: bilingual project overview and research notes.
 
-The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains CPT, sft.py continues from the CPT adapter on QA examples, and export_hf.py merges a trained adapter into the full Hugging Face model. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check; evaluate_qa.py compares text answers against a reference file.
+Read the Python files by responsibility; all live under `src/healthcpt/`:
+
+| Step | Files |
+|---|---|
+| Command entry | `cli.py` |
+| Data download and preparation | `medquad.py`, `medical_data.py` |
+| Training | `cpt.py`, `sft.py`, `lstm_baseline.py` |
+| Weight merging and file checks | `export_hf.py`, `checkpoint_files.py` |
+| Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py` |
+| Shared QA sampling and metrics | `qa_metrics.py` |
 
 Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. Seeded 200-question validation and test samples have been evaluated; the full test file and manual answer review remain pending. See the [research overview](docs/research/README.en.md) for run settings, results, and limits. DPO and GRPO remain optional and are not implemented.

@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 import time
 
-from healthcpt.evaluate_qa import (
+from healthcpt.qa_metrics import (
     calculate_metrics, file_sha256, read_examples, select_examples, write_jsonl,
 )
 
@@ -46,6 +46,10 @@ def runtime(seed):
 
 
 def train(args):
+    sizes = (args.vocab_size, args.embedding_dim, args.hidden_size,
+             args.sequence_length, args.batch_size, args.epochs)
+    if min(sizes) < 1 or args.learning_rate <= 0:
+        raise ValueError("Training sizes and learning rate must be positive.")
     tf, keras = runtime(args.seed)
     if not tf.config.list_physical_devices("GPU"):
         print("[LSTM] No GPU detected; CPU training may be slow.", flush=True)
@@ -166,6 +170,8 @@ def train(args):
 
 
 def evaluate(args):
+    if args.max_new_words < 1:
+        raise ValueError("--max-new-words must be positive.")
     examples = select_examples(read_examples(args.qa_file), args.limit, args.seed)
     cached = None
     cached_report = None
@@ -252,10 +258,8 @@ def evaluate(args):
     print(json.dumps(report, indent=2))
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="command", required=True)
-    training = commands.add_parser("train")
+def add_training_arguments(training):
+    """Share argument definitions between healthcpt and the module entry point."""
     training.add_argument("--train-file", type=Path, required=True)
     training.add_argument("--validation-file", type=Path, required=True)
     training.add_argument("--output-dir", type=Path, required=True)
@@ -268,23 +272,29 @@ def main():
     training.add_argument("--learning-rate", type=float, default=1e-3)
     training.add_argument("--limit-train", type=int)
     training.add_argument("--limit-validation", type=int)
-    evaluation = commands.add_parser("evaluate")
+    training.add_argument("--seed", type=int, default=5565)
+
+
+def add_evaluation_arguments(evaluation):
+    """Keep both evaluation entry points on the same options and defaults."""
     evaluation.add_argument("--model-dir", type=Path, required=True)
     evaluation.add_argument("--qa-file", type=Path, required=True)
     evaluation.add_argument("--output-dir", type=Path, required=True)
     evaluation.add_argument("--limit", type=int, default=200)
     evaluation.add_argument("--max-new-words", type=int, default=128)
     evaluation.add_argument("--cached-qwen-predictions", type=Path)
-    for command in (training, evaluation):
-        command.add_argument("--seed", type=int, default=5565)
+    evaluation.add_argument("--seed", type=int, default=5565)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    add_training_arguments(commands.add_parser("train"))
+    add_evaluation_arguments(commands.add_parser("evaluate"))
     args = parser.parse_args()
     if args.command == "train":
-        if min(args.vocab_size, args.embedding_dim, args.hidden_size, args.sequence_length, args.batch_size, args.epochs) < 1 or args.learning_rate <= 0:
-            parser.error("Training sizes and learning rate must be positive.")
         train(args)
     else:
-        if args.max_new_words < 1:
-            parser.error("--max-new-words must be positive.")
         evaluate(args)
 
 

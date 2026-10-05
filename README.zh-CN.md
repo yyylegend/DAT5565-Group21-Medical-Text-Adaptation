@@ -2,7 +2,25 @@
 
 **语言 / Language:** 简体中文 | [English](README.md)
 
-这份 README 从新服务器开始，带你配置仓库、准备数据，并在 GPU 服务器上用 tmux 运行 CPT。下面的命令要在 SSH 连接到服务器后的 Linux 终端运行，不是在 Windows PowerShell 中运行。项目研究计划和数据来源见[研究概览](docs/research/README.md)。
+这份 README 从新服务器开始，带你配置仓库、准备数据，并在 GPU 服务器上用 tmux 运行 CPT、SFT 和 LSTM 基础模型。下面的命令要在 SSH 连接到服务器后的 Linux 终端运行，不是在 Windows PowerShell 中运行。项目研究计划和数据来源见[研究概览](docs/research/README.md)。
+
+## 当前应该用哪个分支
+
+| 名称 | 用途 |
+|---|---|
+| `main` | 已完成 CPT 的稳定基线；暂时不包含 SFT/LSTM 工作。 |
+| `runqi/sft-work` | 当前课程项目工作分支，包含 CPT、SFT、LSTM、导出与评测。名字沿用已有服务器配置。 |
+| `cpt-baseline-2026-09-28` | 固定在 `5800729` 的 CPT 基线标签，方便未来更新 `main` 后仍能回到这个版本。 |
+
+下面的安装指引克隆当前工作分支。已在服务器克隆过仓库，则先执行：
+
+    git fetch origin
+    git switch runqi/sft-work
+    git pull --ff-only
+
+CPT/SFT 已完成训练和 200 题抽样评测；当前必做工作是跑通 LSTM pilot、全量训练及相同测试题对照。完成运行检查和结果记录后，再通过一个 PR 将课程主线合并到 `main`。额外的蒸馏、DPO、GRPO 实验另开分支。
+
+TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>`；Qwen 图文检查和问答评测仍在已有 PyTorch/Transformers 环境运行 `python src/healthcpt/...`。旧的 `cpt-pilot` 和 LSTM 模块命令继续可用。
 
 ## 1. 开始前需要准备
 
@@ -42,7 +60,7 @@
 先在云平台确认持久磁盘的挂载路径。不同服务器的路径不同。把下面第一行替换成你的实际路径：
 
     cd /path/to/your/persistent-disk
-    git clone https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
+    git clone --branch runqi/sft-work https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
     cd DAT5565-Group21-Medical-Text-Adaptation
     uv sync --locked --python 3.12
     uv run python --version
@@ -62,9 +80,14 @@
     data/processed/cpt-medical-v3/qa_test_eval.jsonl
     data/processed/cpt-medical-v3/manifest.json
 
+SFT 和 LSTM 训练还需要：
+
+    data/processed/medquad-v1/qa_train.jsonl
+    data/processed/medquad-v1/manifest.json
+
 上传前可以先创建目标目录：
 
-    mkdir -p data/processed/cpt-medical-v3
+    mkdir -p data/processed/cpt-medical-v3 data/processed/medquad-v1
 
 你可以使用云平台的文件管理器或 scp。保持上面的文件名和目录结构。当前 CPT 数据包含 24,240 条训练文本片段和 1,645 条验证片段。
 
@@ -123,7 +146,7 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 
 这会检查模型能否加载、GPU 是否可用，以及 adapter 能否保存：
 
-    uv run healthcpt cpt-pilot \
+    uv run healthcpt cpt-train \
       data/processed/cpt-medical-v3/cpt_train.jsonl \
       data/processed/cpt-medical-v3/cpt_validation.jsonl \
       runs/qwen3_5_2b_cpt_pilot \
@@ -133,7 +156,7 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
 
 ### 全量 CPT 训练
 
-    uv run healthcpt cpt-pilot \
+    uv run healthcpt cpt-train \
       data/processed/cpt-medical-v3/cpt_train.jsonl \
       data/processed/cpt-medical-v3/cpt_validation.jsonl \
       runs/qwen3_5_2b_cpt_full_1epoch \
@@ -274,7 +297,7 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 
 先在 tmux 中运行小样本检查：
 
-    uv run python -m healthcpt.lstm_baseline train \
+    uv run healthcpt lstm-train \
       --train-file data/processed/medquad-v1/qa_train.jsonl \
       --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
       --output-dir runs/lstm_qa_pilot \
@@ -282,7 +305,7 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 
 成功后运行全部问答，最多 5 个 epoch，按验证 loss 提前停止：
 
-    uv run python -m healthcpt.lstm_baseline train \
+    uv run healthcpt lstm-train \
       --train-file data/processed/medquad-v1/qa_train.jsonl \
       --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
       --output-dir runs/lstm_qa_full \
@@ -293,7 +316,7 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 
 训练完成后，在相同 200 道测试题上评测，并复用之前保存的 Qwen 回答，避免重新跑大模型：
 
-    uv run python -m healthcpt.lstm_baseline evaluate \
+    uv run healthcpt lstm-evaluate \
       --model-dir runs/lstm_qa_full \
       --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
       --output-dir runs/qa_eval_lstm_test_200 --limit 200 --seed 5565 \
@@ -308,6 +331,15 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 - runs/：检查点、TensorBoard 日志、adapter 和运行记录，不纳入 Git。
 - docs/research/：中英文研究概览和研究笔记。
 
-主要 Python 文件位于 src/healthcpt/：cli.py 负责命令入口，medquad.py 准备 MedQuAD 划分，medical_data.py 下载和清理 CPT 来源，cpt.py 训练 CPT，sft.py 从 CPT adapter 继续训练问答，export_hf.py 将训练 adapter 合并到完整 Hugging Face 模型。checkpoint_files.py 负责复制和校验权重文件；verify_hf.py 提供可选的 Transformers 文本和图片推理检查；evaluate_qa.py 用参考答案对比文本问答结果。
+Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
+
+| 步骤 | 文件 |
+|---|---|
+| 命令入口 | `cli.py` |
+| 数据下载与清理 | `medquad.py`、`medical_data.py` |
+| 模型训练 | `cpt.py`、`sft.py`、`lstm_baseline.py` |
+| 权重合并与文件校验 | `export_hf.py`、`checkpoint_files.py` |
+| Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py` |
+| 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
 Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。验证集和测试集的 200 题抽样结果已记录；全量测试集和人工回答审查尚未完成。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。

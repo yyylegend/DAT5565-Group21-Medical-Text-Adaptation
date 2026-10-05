@@ -12,9 +12,9 @@
 
 DPO 和 GRPO 暂作可选扩展：如果时间、数据和 TensorFlow/Keras 工具链允许，就从同一个 SFT 检查点分别继续训练。DPO 需要“较好回答/较差回答”成对数据；GRPO 还需要明确、可信的奖励打分规则。目前这些数据、奖励方式和训练实现都未确定，不能算核心计划。
 
-教授反馈已确认：至少 10,000 条医学文本或问答对满足数据要求；主要实验继续使用 TensorFlow/Keras/KerasHub，并必须补充课堂基础架构 baseline。我们选用从零训练的单向 LSTM 语言模型，结构为 Embedding(128) → LSTM(256) → Dense，词表上限 20,000、最大约 810 万参数。使用与 SFT 相同的 12,799 条训练问答和验证集，最多训练 5 个 epoch，再在相同 200 道测试题上比较回答的 Token F1、ROUGE-L 和模型成本。训练入口和命令见根目录 README；pilot 与训练后的 200 题测试评测均已完成；实际训练 epoch、模型参数量和训练 loss 尚需从服务器 `runs/lstm_qa_full/run.json` 核对并归档。
+教授反馈已确认：至少 10,000 条医学文本或问答对满足数据要求；主要实验继续使用 TensorFlow/Keras/KerasHub，并必须补充课堂基础架构 baseline。我们选用从零训练的单向 LSTM 语言模型，结构为 Embedding(128) → LSTM(256) → Dense，词表上限 20,000、最大约 810 万参数。使用与 SFT 相同的 12,799 条训练问答和验证集，最多训练 5 个 epoch，再在相同 200 道测试题上比较回答的 Token F1、ROUGE-L 和模型成本。训练入口和命令见根目录 README；pilot、5 个 epoch 的全量训练和 200 题测试评测均已完成，训练记录保存在服务器 `runs/lstm_qa_full/run.json`。
 
-LSTM 可以生成文字，但有限数据下的回答可能重复或不切题。它的单词 tokenizer 与 Qwen 子词 tokenizer 不同，因此 perplexity 只在 LSTM 自己的词表内报告，不能跨模型直接比较；输入和输出 token 上限也不完全等价。Qwen 的大规模预训练知识和模型规模都影响结果，不能把性能差距全部归因于架构。先完成这个必做对照，再考虑额外 benchmark 或后训练扩展。
+LSTM 可以生成文字，但有限数据下的回答可能重复或不切题。它的单词 tokenizer 与 Qwen 子词 tokenizer 不同，因此 perplexity 只在 LSTM 自己的词表内报告，不能跨模型直接比较；输入和输出 token 上限也不完全等价。Qwen 的大规模预训练知识和模型规模都影响结果，不能把性能差距全部归因于架构。基础模型对照已完成；下一步补充公开 benchmark 和人工答案审查。
 
 ## 数据是什么样的
 
@@ -86,10 +86,12 @@ Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。
   | Test, n=200 | LSTM, cached Base | 0.2586 | 0.2092 | 0.1600 | 0.1797 |
 
   上述结果的 normalized exact match 都为 0，且没有空回答。CPT 的 Token F1 低于同次 Base，ROUGE-L 略高；CPT+SFT 在这两个 200 题样本里的两项文字重合指标都高于同次 Base。这是初步结果，不证明医学回答正确。两次测试运行使用同一文件哈希、seed 和生成设置，但 Base 指标略有波动，因此应按每次运行内部的配对值解读，不要把不同运行的 Base 分数当成完全相同的基线。逐题回答和 JSON 汇总分别保存在服务器 `runs/qa_eval_*` 目录，不纳入 Git。
+- LSTM 全量训练实际参数量为 8,094,240，词表为 20,000，embedding 128、hidden size 256、序列长度 512、batch size 8、Adam 学习率 1e-3、Dropout 0.2，使用 TensorFlow 2.21.0 和 Keras 3.15.1。完成 5 个 epoch，最佳 checkpoint 位于第 5 轮；包含验证与保存的训练耗时为 567.18 秒（约 9 分 27 秒）。训练 loss 从 5.4926 降至 3.0513，验证 loss 从 4.3799 降至 3.1945，验证 token accuracy 为 0.4756。验证 loss 持续下降，early stopping 未触发，不能称为完全收敛；这是固定 5-epoch 预算内的最佳模型。按全部有效验证目标词汇总的 NLL 为 3.1222、word perplexity 为 22.6959，不能与 Qwen 的子词指标直接比较。
+- LSTM 训练中有 657/12,799 条（5.13%）文本被截断，验证中为 102/1,471 条（6.93%）；未知词比例分别为 2.20% 和 3.62%。保存的完整 `model.keras` 为 97,164,406 字节（约 97.2 MB），包含训练用优化器状态；仅按 FP32 参数计算的权重约 32.4 MB，两者不能混作部署权重大小。
 - LSTM 测试结果保存于服务器 `runs/qa_eval_lstm_test_200/`，复用的 Qwen 预测 SHA-256 为 `4ded3d20295a041d965cf6f74ad63c6b8fa6870aef3c4762ac30dda8080a14d3`。LSTM 的 Token F1 低于 Base，ROUGE-L 高于 Base；CPT+SFT 两项都高于 LSTM。LSTM 平均每题耗时 0.1256 秒、生成 71.275 个空格分词的单词；Qwen 尚未按相同方式记录耗时，不能计算速度提升倍数。两者使用不同词表，128 个 LSTM 单词与 128 个 Qwen 子词并非同一长度预算，perplexity 和 token 速度也不能直接横向比较。
 - 测试集共有 1,573 条记录，目前只评了按 seed 5565 抽取的 200 条；全量测试尚未运行。MedQuAD 是公开数据，但与训练数据来自同一数据集体系。
 - 另准备了 MMLU `professional_medicine` 的完整 272 道 test 题和 5 道 dev 提示示例，用来报告 5-shot 四选一准确率。数据来自 `cais/mmlu`，固定 revision 为 `c30699e8356da336a370243923dbaf21066bb9fe`。`evaluate_mmlu.py` 直接比较四个答案 token 的概率；test 答案不进入提示，不用于训练。当前仅完成数据、提示词与 tokenizer 检查，GPU 评测尚未运行。报告必须标明单科目与 5-shot 协议；这是医学考试评测，不是完整 MMLU 分数，也不能证明患者问答质量或公开题目未进入预训练数据。[MMLU 数据与原始实现](https://github.com/hendrycks/test)
-- `runqi/sft-work` 是当前课程主线工作分支，覆盖 CPT、SFT 和必做的 LSTM 对照。`main` 暂为 CPT 基线，基线标签为 `cpt-baseline-2026-09-28`；待 LSTM 运行检查和结果文档完成后，通过一个 PR 合入课程主线。
+- `runqi/sft-work` 是当前课程主线工作分支，覆盖 CPT、SFT 和必做的 LSTM 对照。`main` 暂为 CPT 基线，基线标签为 `cpt-baseline-2026-09-28`；待公开 benchmark 和最终报告记录完成后，通过一个 PR 合入课程主线。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 
 如果之后尝试 DPO 或 GRPO，二者都从同一个 SFT 检查点独立分支。开始前要确定偏好数据、奖励规则和评测集；不能只凭奖励分数上涨就断定回答质量提高。若工具链或数据来不及确认，完成 Base→CPT→SFT 主线即可。

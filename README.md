@@ -18,7 +18,7 @@ The installation instructions below clone the active work branch. For an existin
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT training and 200-question sampled evaluations are complete. The current required work is the LSTM pilot, full training, and comparison on the same test questions. After runtime checks and result documentation, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO experiments get separate branches.
+CPT/SFT training and 200-question sampled evaluations are complete. The 128-example LSTM pilot completed on an RTX 4090. The current required work is full training and comparison on the same test questions. After runtime checks and result documentation, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO experiments get separate branches.
 
 TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 

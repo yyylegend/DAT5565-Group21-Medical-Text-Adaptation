@@ -124,7 +124,7 @@ def train(args):
     print("[LSTM] Training starts. Best and latest full models are saved after epochs.", flush=True)
     training_started = time.perf_counter()
     history = model.fit(
-        training, validation_data=validation, epochs=args.epochs, verbose=1,
+        training, validation_data=validation, epochs=args.epochs, shuffle=False, verbose=1,
         callbacks=[
             keras.callbacks.ModelCheckpoint(str(args.output_dir / "model.keras"), save_best_only=True),
             keras.callbacks.ModelCheckpoint(str(args.output_dir / "latest.keras")),

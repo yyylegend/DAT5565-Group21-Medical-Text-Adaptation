@@ -18,7 +18,7 @@
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT 已完成训练和 200 题抽样评测；当前必做工作是跑通 LSTM pilot、全量训练及相同测试题对照。完成运行检查和结果记录后，再通过一个 PR 将课程主线合并到 `main`。额外的蒸馏、DPO、GRPO 实验另开分支。
+CPT/SFT 已完成训练和 200 题抽样评测；LSTM 的 128 条 pilot 已在 RTX 4090 上完成；当前必做工作是全量训练及相同测试题对照。完成运行检查和结果记录后，再通过一个 PR 将课程主线合并到 `main`。额外的蒸馏、DPO、GRPO 实验另开分支。
 
 TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>`；Qwen 图文检查和问答评测仍在已有 PyTorch/Transformers 环境运行 `python src/healthcpt/...`。旧的 `cpt-pilot` 和 LSTM 模块命令继续可用。
 

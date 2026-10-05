@@ -85,7 +85,8 @@ Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。
   | Test, n=200 | CPT+SFT | 0.2586 | 0.3248 | 0.1600 | 0.2622 |
 
   四次评测的 normalized exact match 都为 0，且没有空回答。CPT 的 Token F1 低于同次 Base，ROUGE-L 略高；CPT+SFT 在这两个 200 题样本里的两项文字重合指标都高于同次 Base。这是初步结果，不证明医学回答正确。两次测试运行使用同一文件哈希、seed 和生成设置，但 Base 指标略有波动，因此应按每次运行内部的配对值解读，不要把不同运行的 Base 分数当成完全相同的基线。逐题回答和 JSON 汇总分别保存在服务器 `runs/qa_eval_*` 目录，不纳入 Git。
-- 测试集共有 1,573 条记录，目前只评了按 seed 5565 抽取的 200 条；全量测试尚未运行。MedQuAD 是公开数据，但与训练数据来自同一数据集体系，因此将来若时间允许，可再用小型独立消费者健康问答集补充外部评测。
+- 测试集共有 1,573 条记录，目前只评了按 seed 5565 抽取的 200 条；全量测试尚未运行。MedQuAD 是公开数据，但与训练数据来自同一数据集体系。
+- 另准备了 MMLU `professional_medicine` 的完整 272 道 test 题和 5 道 dev 提示示例，用来报告 5-shot 四选一准确率。数据来自 `cais/mmlu`，固定 revision 为 `c30699e8356da336a370243923dbaf21066bb9fe`。`evaluate_mmlu.py` 直接比较四个答案 token 的概率；test 答案不进入提示，不用于训练。当前仅完成数据、提示词与 tokenizer 检查，GPU 评测尚未运行。报告必须标明单科目与 5-shot 协议；这是医学考试评测，不是完整 MMLU 分数，也不能证明患者问答质量或公开题目未进入预训练数据。[MMLU 数据与原始实现](https://github.com/hendrycks/test)
 - `runqi/sft-work` 是当前课程主线工作分支，覆盖 CPT、SFT 和必做的 LSTM 对照。`main` 暂为 CPT 基线，基线标签为 `cpt-baseline-2026-09-28`；待 LSTM 运行检查和结果文档完成后，通过一个 PR 合入课程主线。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 

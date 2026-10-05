@@ -324,6 +324,25 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 
 脚本核对缓存中的题目、参考答案、来源行号和数据哈希，再输出 LSTM、Base 和 CPT+SFT 的相同文字重合指标。LSTM 使用单词词表，Qwen 使用子词 tokenizer；各自的 512-token 输入和 128-token 输出限制含义不同，报告必须说明这一点。LSTM 内部的 word perplexity 不能直接与 Qwen perplexity 比较。它与 Qwen 的对照衡量整个模型方案的差别，也包含预训练数据和模型规模差异，不能仅归因于 LSTM/Transformer 架构。
 
+## 13. 公开 benchmark 的自动准确率
+
+补充评测选用 [MMLU](https://github.com/hendrycks/test) 的 `professional_medicine` 完整子集：272 道四选一 test 题，使用 5 道 dev 题作为提示中的示例。分数是正确题数除以 272，名称应写作 **MMLU professional_medicine, 5-shot accuracy**，不是整个 MMLU 的总分。它测医学考试知识；此前 MedQuAD 留出题上的文字重合评测仍保留。
+
+在已有 PyTorch/Transformers 推理环境中，先准备这一科目的小数据文件，不需要安装新的数据工具：
+
+    python src/healthcpt/evaluate_mmlu.py prepare
+
+下载来源是 `cais/mmlu`，脚本核对固定数据 revision 和行数，保存 test/dev JSONL 与哈希清单。只读取这一科目，不下载整个 MMLU。若其他电脑已准备好这三个文件，也可将 `data/processed/mmlu-professional-medicine/` 传到服务器。
+
+先加 `--limit 10` 并使用不同输出目录做运行检查。完整评测命令如下，建议在 tmux 内运行：
+
+    python src/healthcpt/evaluate_mmlu.py evaluate \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
+      --output-dir runs/mmlu_professional_medicine_5shot
+
+脚本比较下一 token 为 ` A`、` B`、` C`、` D` 的概率，取最高者计分；不生成长答案，也不调用付费评分模型。两模型使用相同的 272 道题和 5 个 dev 示例，test 答案不进入提示词。`metrics.json` 保存 accuracy、正确题数、两模型的逐题配对统计和运行设置；逐题预测另存 JSONL。当前数据下载、提示词及 tokenizer 检查已通过，服务器 GPU 评分待运行。预训练模型可能已接触过公开题目，因此这项分数也不证明临床安全或完全无数据重叠。
+
 ## 仓库里有什么
 
 - data/：原始来源和处理后的数据，不纳入 Git。
@@ -339,7 +358,7 @@ Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
 | 数据下载与清理 | `medquad.py`、`medical_data.py` |
 | 模型训练 | `cpt.py`、`sft.py`、`lstm_baseline.py` |
 | 权重合并与文件校验 | `export_hf.py`、`checkpoint_files.py` |
-| Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py` |
+| Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py`、`evaluate_mmlu.py` |
 | 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
 Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。验证集和测试集的 200 题抽样结果已记录；全量测试集和人工回答审查尚未完成。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。

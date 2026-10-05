@@ -324,6 +324,25 @@ Evaluate the same 200 test questions and reuse the saved Qwen answers:
 
 The script verifies question, reference, source-line, and data-hash alignment before computing the same text-overlap metrics for LSTM, Base, and CPT+SFT. LSTM word tokens and Qwen subword tokens differ, so their 512-token input and 128-token generation caps are not equivalent; disclose this in the report. LSTM word perplexity cannot be directly compared with Qwen perplexity. This comparison measures differences between complete model setups, including model size and pretraining exposure, rather than isolating architecture alone.
 
+## 13. Automatic accuracy on a public benchmark
+
+The additional benchmark is the complete `professional_medicine` subject from [MMLU](https://github.com/hendrycks/test): 272 four-choice test questions with five dev questions as prompt demonstrations. Report **MMLU professional_medicine, 5-shot accuracy**, not the full MMLU aggregate score. It measures medical exam knowledge and supplements the existing MedQuAD held-out text-overlap evaluation.
+
+Prepare only this subject in the existing PyTorch/Transformers inference environment, with no additional dataset library:
+
+    python src/healthcpt/evaluate_mmlu.py prepare
+
+The source is `cais/mmlu`. The script verifies a fixed dataset revision and row counts and saves dev/test JSONL plus a hash manifest. It does not download the full MMLU collection. Alternatively, transfer the prepared `data/processed/mmlu-professional-medicine/` directory to the server.
+
+For an execution pilot, add `--limit 10` and choose another output folder. Run the full evaluation inside tmux:
+
+    python src/healthcpt/evaluate_mmlu.py evaluate \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
+      --output-dir runs/mmlu_professional_medicine_5shot
+
+The script selects the largest next-token probability among ` A`, ` B`, ` C`, and ` D`; it does not generate long responses or require a paid judge. Both models see the same 272 questions and five dev demonstrations. Test gold labels never enter prompts. `metrics.json` records accuracy, correct counts, paired outcomes, and settings; per-question predictions are saved as JSONL. Download, prompt, and tokenizer checks passed; server GPU scoring remains pending. Public benchmark content may have appeared in pretrained models' training data, so the score does not establish clinical safety or a completely contamination-free evaluation.
+
 ## Project files
 
 - data/: raw sources and processed datasets; not tracked by Git.
@@ -339,7 +358,7 @@ Read the Python files by responsibility; all live under `src/healthcpt/`:
 | Data download and preparation | `medquad.py`, `medical_data.py` |
 | Training | `cpt.py`, `sft.py`, `lstm_baseline.py` |
 | Weight merging and file checks | `export_hf.py`, `checkpoint_files.py` |
-| Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py` |
+| Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py`, `evaluate_mmlu.py` |
 | Shared QA sampling and metrics | `qa_metrics.py` |
 
 Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. Seeded 200-question validation and test samples have been evaluated; the full test file and manual answer review remain pending. See the [research overview](docs/research/README.en.md) for run settings, results, and limits. DPO and GRPO remain optional and are not implemented.

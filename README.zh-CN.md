@@ -268,6 +268,39 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 
 导出目录使用 Hugging Face Transformers 可读取的配置、tokenizer/processor 文件和 Safetensors 权重；视觉相关权重沿用原始 Base。训练 adapter 是 `.h5`，完整导出才是 Safetensors。导出后可用上一节的 `evaluate_qa.py`，将 `--candidate-dir` 指向新的 `hf_export_multimodal`，并用 `qa_test_eval.jsonl` 做最终 Base 与 CPT+SFT 对比。
 
+## 12. 教授要求的 LSTM 基础模型
+
+教授已批准至少 10,000 条医学文本或问答对的数据量，并要求主要实验使用 TensorFlow/Keras，补充课堂基础架构对照。`lstm_baseline.py` 从零训练 `Embedding → 单向 LSTM → Dense`，使用与 SFT 相同的训练问答。词表只由训练集建立，默认最多 20,000 个词、embedding 128、LSTM hidden size 256；模型最大约 810 万参数。它能生成回答，但不预期具备预训练 SLM 的知识和语言能力。
+
+先在 tmux 中运行小样本检查：
+
+    uv run python -m healthcpt.lstm_baseline train \
+      --train-file data/processed/medquad-v1/qa_train.jsonl \
+      --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/lstm_qa_pilot \
+      --limit-train 128 --limit-validation 32 --epochs 1
+
+成功后运行全部问答，最多 5 个 epoch，按验证 loss 提前停止：
+
+    uv run python -m healthcpt.lstm_baseline train \
+      --train-file data/processed/medquad-v1/qa_train.jsonl \
+      --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/lstm_qa_full \
+      --vocab-size 20000 --embedding-dim 128 --hidden-size 256 \
+      --sequence-length 512 --batch-size 8 --epochs 5 --learning-rate 1e-3
+
+每个 epoch 结束保存最佳完整模型 `model.keras` 和最新模型 `latest.keras`；词表、训练参数、loss 曲线和未知词/截断统计也保存在运行目录。这里没有逐步断点恢复入口；tmux 会话和服务器应在训练过程中保持运行。模型格式是 Keras `.keras`，不是 Hugging Face Safetensors。
+
+训练完成后，在相同 200 道测试题上评测，并复用之前保存的 Qwen 回答，避免重新跑大模型：
+
+    uv run python -m healthcpt.lstm_baseline evaluate \
+      --model-dir runs/lstm_qa_full \
+      --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
+      --output-dir runs/qa_eval_lstm_test_200 --limit 200 --seed 5565 \
+      --cached-qwen-predictions runs/qa_eval_cpt_sft_test_200/predictions.jsonl
+
+脚本核对缓存中的题目、参考答案、来源行号和数据哈希，再输出 LSTM、Base 和 CPT+SFT 的相同文字重合指标。LSTM 使用单词词表，Qwen 使用子词 tokenizer；各自的 512-token 输入和 128-token 输出限制含义不同，报告必须说明这一点。LSTM 内部的 word perplexity 不能直接与 Qwen perplexity 比较。它与 Qwen 的对照衡量整个模型方案的差别，也包含预训练数据和模型规模差异，不能仅归因于 LSTM/Transformer 架构。
+
 ## 仓库里有什么
 
 - data/：原始来源和处理后的数据，不纳入 Git。

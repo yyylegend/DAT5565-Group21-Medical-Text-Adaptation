@@ -268,6 +268,39 @@ After training, `sft_adapter.lora.h5` contains the continued CPT+SFT LoRA update
 
 The export folder contains the Hugging Face configuration, tokenizer/processor files, and Safetensors weights; vision-related weights are copied from the original Base model. The training adapter is `.h5`; the complete export uses Safetensors. Then run `evaluate_qa.py` with `--candidate-dir` pointing to this `hf_export_multimodal` folder and `qa_test_eval.jsonl` for the final Base-versus-CPT+SFT comparison.
 
+## 12. Required foundational LSTM baseline
+
+The instructor approved at least 10,000 medical text records or QA pairs and requires primary TensorFlow/Keras experiments with a foundational architecture baseline. `lstm_baseline.py` trains `Embedding → forward LSTM → Dense` from scratch on the same QA training split as SFT. Its vocabulary is learned only from training data: up to 20,000 words, embedding dimension 128, and hidden size 256, totaling about 8.1 million parameters at the vocabulary limit. It can generate answers; it is not expected to match the knowledge or fluency of a pretrained SLM.
+
+Start with a pilot inside tmux:
+
+    uv run python -m healthcpt.lstm_baseline train \
+      --train-file data/processed/medquad-v1/qa_train.jsonl \
+      --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/lstm_qa_pilot \
+      --limit-train 128 --limit-validation 32 --epochs 1
+
+Then train on all pairs for at most five epochs with validation-loss early stopping:
+
+    uv run python -m healthcpt.lstm_baseline train \
+      --train-file data/processed/medquad-v1/qa_train.jsonl \
+      --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/lstm_qa_full \
+      --vocab-size 20000 --embedding-dim 128 --hidden-size 256 \
+      --sequence-length 512 --batch-size 8 --epochs 5 --learning-rate 1e-3
+
+The best full model (`model.keras`) and latest model (`latest.keras`) are saved after epochs, alongside the vocabulary, training settings, loss curves, and unknown-word/truncation statistics. There is no step-resume command for this baseline; keep the tmux session and server running. These are Keras models, not Hugging Face Safetensors.
+
+Evaluate the same 200 test questions and reuse the saved Qwen answers:
+
+    uv run python -m healthcpt.lstm_baseline evaluate \
+      --model-dir runs/lstm_qa_full \
+      --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
+      --output-dir runs/qa_eval_lstm_test_200 --limit 200 --seed 5565 \
+      --cached-qwen-predictions runs/qa_eval_cpt_sft_test_200/predictions.jsonl
+
+The script verifies question, reference, source-line, and data-hash alignment before computing the same text-overlap metrics for LSTM, Base, and CPT+SFT. LSTM word tokens and Qwen subword tokens differ, so their 512-token input and 128-token generation caps are not equivalent; disclose this in the report. LSTM word perplexity cannot be directly compared with Qwen perplexity. This comparison measures differences between complete model setups, including model size and pretraining exposure, rather than isolating architecture alone.
+
 ## Project files
 
 - data/: raw sources and processed datasets; not tracked by Git.

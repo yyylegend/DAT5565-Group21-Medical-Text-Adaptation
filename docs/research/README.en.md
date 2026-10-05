@@ -1,6 +1,6 @@
 # Medical Question Answering Model: Research and Data Preparation
 
-Updated: 2026-09-28. The submitted proposal remains unchanged. This document records the current experiment plan, v3 data status, and completed CPT stage. See the [简体中文版](README.md).
+Updated: 2026-10-05. The submitted proposal remains unchanged. This document records the plan, completed CPT/SFT experiments, and required foundational baseline. See the [简体中文版](README.md).
 
 ## Project question
 
@@ -9,6 +9,10 @@ We selected Qwen3.5-2B-Base for a small medical question-answering prototype. We
 The main workflow is **Base → CPT → SFT**. Continued pretraining (CPT) lets the model learn from medical text. Supervised fine-tuning (SFT) then teaches it to answer questions. The main comparison is the Base model versus the final CPT+SFT model on the same held-out questions. This measures the overall training pipeline; it cannot isolate how much CPT contributes beyond SFT. That differs from the submitted proposal, which planned to compare CPT+SFT with SFT alone. The final report should explain this change in scope and why it was made.
 
 DPO and GRPO are optional extensions if time, data, and the TensorFlow/Keras toolchain allow. Both would branch from the same SFT checkpoint. DPO needs pairs of preferred and less-preferred answers. GRPO also needs a clear and reliable scoring rule. These datasets, reward methods, and training implementations are not yet defined, so they are not part of the core plan.
+
+Instructor feedback approved at least 10,000 medical text records or QA pairs and requires primary TensorFlow/Keras/KerasHub experiments plus a foundational architecture baseline. We select a forward LSTM language model trained from scratch: Embedding(128) → LSTM(256) → Dense, with at most 20,000 vocabulary entries and about 8.1 million parameters. It uses the same 12,799 QA training rows and validation split as SFT, trains for at most five epochs, and compares answer token F1, ROUGE-L, and model costs on the same 200 test questions. Commands are in the root README; server training and evaluation are pending.
+
+The LSTM can generate text, but limited training data may lead to repetitive or irrelevant answers. Its word tokenizer differs from Qwen's subword tokenizer, so report word perplexity only within the LSTM vocabulary; cross-model perplexity comparisons and token caps are not equivalent. Model size and Qwen's large pretraining exposure also affect results, so differences cannot be attributed solely to architecture. Complete this required baseline before additional benchmarks or post-training extensions.
 
 ## What the datasets contain
 
@@ -32,7 +36,7 @@ The v3 CPT training set contains **24,240 text chunks**:
 
 The CPT validation set contains 1,645 chunks: 50 MedlinePlus chunks and 1,595 PMC chunks, from 14 MedlinePlus topics and 60 papers. The MedQuAD SFT training split remains complete.
 
-By a rough whitespace-separated word count, the training text totals about **4.07 million words**: about 2.57 million from PMC (63%), 1.22 million from MedQuAD (30%), and 0.28 million from MedlinePlus (7%). These are not model-token counts. The course instructions call for at least 10,000 text documents. We count each prepared CPT chunk as one training example, giving 24,240. We also report the underlying source-document IDs: 4,401 in the training set, so chunk counts are not mistaken for distinct articles.
+By a rough whitespace-separated word count, the training text totals about **4.07 million words**: about 2.57 million from PMC (63%), 1.22 million from MedQuAD (30%), and 0.28 million from MedlinePlus (7%). These are not model-token counts. Instructor feedback approved a threshold of at least 10,000 medical text records or QA pairs; our 12,799 training pairs meet it. CPT separately has 24,240 training chunks and 4,401 source IDs; chunk and source counts remain distinct.
 
 ## Data flow and evaluation
 

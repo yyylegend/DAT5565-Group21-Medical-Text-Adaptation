@@ -18,7 +18,7 @@
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT 和 LSTM 已完成相同 200 道测试题的对比；当前工作是完成公开 MMLU 子集评测、人工抽查和报告记录。完成运行检查和结果记录后，再通过一个 PR 将课程主线合并到 `main`。额外的蒸馏、DPO、GRPO 实验另开分支。
+CPT/SFT 和最终 16 轮 LSTM 检查点已完成相同 200 道测试题的对比。剩余工作是完成 Qwen 的 BERTScore/推理资源评测、公开 MMLU、人工抽查和最终报告；结果记录完成后，再通过一个 PR 将课程主线合并到 `main`。蒸馏、DPO 和 GRPO 不属于核心报告范围。
 
 TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>`；Qwen 图文检查和问答评测仍在已有 PyTorch/Transformers 环境运行 `python src/healthcpt/...`。旧的 `cpt-pilot` 和 LSTM 模块命令继续可用。
 
@@ -255,7 +255,22 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
       --output-dir runs/qa_eval_cpt_validation_pilot \
       --limit 50
 
-两个模型使用相同的 `Question: ...\nAnswer:` 提示词和贪心生成设置。去掉 `--limit 50` 可评测全部验证题。脚本会把每题的模型回答写入 predictions.jsonl，并把汇总指标写入 metrics.json，包括 normalized exact match、token F1 和 ROUGE-L。这些指标衡量回答与参考答案的文字重合度，不能证明医学正确性；还要人工抽查。验证集用于开发阶段比较；当前已在测试集抽取 200 题做 Base、CPT 和 CPT+SFT 对比，全量 1,573 题尚未运行。测试集抽样结果及限制见[研究概览](docs/research/README.md)。每次运行请使用一个新的空输出目录。
+两个模型使用相同的 `Question: ...\nAnswer:` 提示词和贪心生成设置。去掉 `--limit 50` 可评测全部验证题。脚本会把每题的模型回答写入 `predictions.jsonl`，把汇总结果写入 `metrics.json`，包括 normalized exact match、token F1 和 ROUGE-L。这些指标衡量回答与参考答案的文字重合度，不能证明医学正确性；还要人工抽查。验证集用于开发阶段比较；当前已在测试集抽取 200 题做 Base、CPT 和 CPT+SFT 对比，全量 1,573 题尚未运行。测试集抽样结果及限制见[研究概览](docs/research/README.md)。每次运行请使用一个新的空输出目录。
+
+如果要对同一批 200 道测试题完成 Base 与 CPT+SFT 的最终对比，脚本还会记录模型加载时间、单题延迟、生成速度、显存峰值和模型目录文件大小。添加 `--bertscore` 可额外计算 BERTScore F1。先在当前 PyTorch 评测环境安装 `bert-score`；它会下载约 1.4 GB 的 `roberta-large` 评分模型。BERTScore 在 Qwen 推理完成后才加载，因此它占用的显存不会计入 Qwen 的显存峰值。
+
+    python -m pip install bert-score
+
+    python src/healthcpt/evaluate_qa.py \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
+      --candidate-name CPT+SFT \
+      --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
+      --output-dir runs/qa_eval_cpt_sft_test_200_infra \
+      --limit 200 --seed 5565 --max-new-tokens 128 \
+      --warmup-questions 3 --bertscore
+
+单题延迟不含模型加载时间，包含提示词处理、生成和解码；生成速度只按生成阶段计算。显存来自 PyTorch CUDA 分配器的统计；可以用 `nvidia-smi` 另行核对整张卡的占用。比较时保持 GPU、模型文件、题目和生成设置一致。正式跑 200 题前，先把命令中的 `--limit 200` 改为 `--limit 5`，并换一个输出目录，确认 BERTScore 能在当前 Transformers 环境正常加载。
 
 ## 11. 运行 SFT
 
@@ -303,26 +318,26 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
       --output-dir runs/lstm_qa_pilot \
       --limit-train 128 --limit-validation 32 --epochs 1
 
-成功后运行全部问答，最多 5 个 epoch，按验证 loss 提前停止：
+正式训练使用全部问答，最多 50 个 epoch，并按验证 loss 提前停止（patience 为 2）：
 
     uv run healthcpt lstm-train \
       --train-file data/processed/medquad-v1/qa_train.jsonl \
       --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
-      --output-dir runs/lstm_qa_full \
+      --output-dir runs/lstm_qa_50epochs \
       --vocab-size 20000 --embedding-dim 128 --hidden-size 256 \
-      --sequence-length 512 --batch-size 8 --epochs 5 --learning-rate 1e-3
+      --sequence-length 512 --batch-size 8 --epochs 50 --learning-rate 1e-3
 
-每个 epoch 结束保存最佳完整模型 `model.keras` 和最新模型 `latest.keras`；词表、训练参数、loss 曲线和未知词/截断统计也保存在运行目录。这里没有逐步断点恢复入口；tmux 会话和服务器应在训练过程中保持运行。模型格式是 Keras `.keras`，不是 Hugging Face Safetensors。
+本次正式运行在第 16 轮早停，验证 loss 最低的第 14 轮被保存为 `model.keras`；`latest.keras` 保存最后一轮。词表、训练参数、loss 曲线和未知词/截断统计也保存在运行目录。这里没有逐步断点恢复入口；tmux 会话和服务器应在训练过程中保持运行。模型格式是 Keras `.keras`，不是 Hugging Face Safetensors。
 
 训练完成后，在相同 200 道测试题上评测，并复用之前保存的 Qwen 回答，避免重新跑大模型：
 
     uv run healthcpt lstm-evaluate \
-      --model-dir runs/lstm_qa_full \
+      --model-dir runs/lstm_qa_50epochs \
       --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
-      --output-dir runs/qa_eval_lstm_test_200 --limit 200 --seed 5565 \
+      --output-dir runs/qa_eval_lstm_16epoch_test_200 --limit 200 --seed 5565 \
       --cached-qwen-predictions runs/qa_eval_cpt_sft_test_200/predictions.jsonl
 
-脚本核对缓存中的题目、参考答案、来源行号和数据哈希，再输出 LSTM、Base 和 CPT+SFT 的相同文字重合指标。LSTM 使用单词词表，Qwen 使用子词 tokenizer；各自的 512-token 输入和 128-token 输出限制含义不同，报告必须说明这一点。LSTM 内部的 word perplexity 不能直接与 Qwen perplexity 比较。它与 Qwen 的对照衡量整个模型方案的差别，也包含预训练数据和模型规模差异，不能仅归因于 LSTM/Transformer 架构。
+脚本核对缓存中的题目、参考答案、来源行号和数据哈希，再输出 LSTM、Base 和 CPT+SFT 的相同文字重合指标。LSTM 使用 128 个生成词，Qwen 使用最多 128 个子词；两者长度预算不同。模型规模和预训练数据也不同，因此结果反映的是完整模型方案差异，不能单独归因于 LSTM/Transformer 架构。
 
 ## 13. 公开 benchmark 的自动准确率
 
@@ -361,4 +376,4 @@ Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
 | Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py`、`evaluate_mmlu.py` |
 | 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
-Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。验证集和测试集的 200 题抽样结果及 LSTM 对照已记录；全量测试集、公开 MMLU 子集与人工回答审查尚未完成。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。
+Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。最终 16 轮 LSTM 训练及同一批 200 道测试题的对比已经记录。Qwen 的 BERTScore/推理资源评测、公开 MMLU 和人工回答审查仍待完成；MedQuAD 的 1,573 道测试题尚未全量运行。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 不属于核心范围，也未实现。

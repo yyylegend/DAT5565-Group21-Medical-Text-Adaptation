@@ -18,7 +18,7 @@ The installation instructions below clone the active work branch. For an existin
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT and LSTM have been compared on the same 200 test questions. Current work is the public MMLU subject evaluation, manual answer review, and report documentation. After runtime checks and result documentation, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO experiments get separate branches.
+CPT/SFT and the final 16-epoch LSTM checkpoint have been compared on the same 200 test questions. Remaining work is the Qwen BERTScore/infrastructure run, public MMLU evaluation, manual answer review, and final report documentation. After these results are recorded, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO are out of scope for the core report.
 
 TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 
@@ -255,7 +255,22 @@ The optional evaluator compares the Base model with one trained model on the sam
       --output-dir runs/qa_eval_cpt_validation_pilot \
       --limit 50
 
-Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to predictions.jsonl and summary metrics to metrics.json. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually. Validation is for development comparisons; a seeded 200-question test sample has now been used to compare Base, CPT, and CPT+SFT, while the full 1,573-row test file remains unevaluated. See the [research overview](docs/research/README.en.md) for those results and limits. Choose a new, empty output folder for each run.
+Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to `predictions.jsonl` and summary metrics to `metrics.json`. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually. Validation is for development comparisons; a seeded 200-question test sample has already been used to compare Base, CPT, and CPT+SFT, while the full 1,573-row test file remains unevaluated. See the [research overview](docs/research/README.en.md) for those results and limits. Choose a new, empty output folder for each run.
+
+For a final Base-versus-CPT+SFT run on the same 200 test questions, the script also records model loading time, per-question latency, output tokens per second, GPU memory peaks, and model-folder size. Add `--bertscore` to include BERTScore F1. Install `bert-score` in the active PyTorch evaluation environment first; it downloads the `roberta-large` scoring model (about 1.4 GB). The BERTScore model is loaded only after Qwen inference, so its memory is excluded from Qwen's GPU memory measurements.
+
+    python -m pip install bert-score
+
+    python src/healthcpt/evaluate_qa.py \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
+      --candidate-name CPT+SFT \
+      --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
+      --output-dir runs/qa_eval_cpt_sft_test_200_infra \
+      --limit 200 --seed 5565 --max-new-tokens 128 \
+      --warmup-questions 3 --bertscore
+
+The latency summary excludes model loading and includes prompt tokenization, generation, and decoding. Output-token throughput measures generation only. GPU memory is measured with PyTorch's CUDA allocator; use `nvidia-smi` as a separate check of total device use. Keep the same GPU, model files, sample, and generation settings when comparing results. Before the full run, try the command with `--limit 5` and a different output folder to confirm BERTScore loads in the current Transformers environment.
 
 ## 11. Run SFT
 
@@ -303,26 +318,26 @@ Start with a pilot inside tmux:
       --output-dir runs/lstm_qa_pilot \
       --limit-train 128 --limit-validation 32 --epochs 1
 
-Then train on all pairs for at most five epochs with validation-loss early stopping:
+The final run used all pairs, a 50-epoch cap, and validation-loss early stopping (patience 2):
 
     uv run healthcpt lstm-train \
       --train-file data/processed/medquad-v1/qa_train.jsonl \
       --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
-      --output-dir runs/lstm_qa_full \
+      --output-dir runs/lstm_qa_50epochs \
       --vocab-size 20000 --embedding-dim 128 --hidden-size 256 \
-      --sequence-length 512 --batch-size 8 --epochs 5 --learning-rate 1e-3
+      --sequence-length 512 --batch-size 8 --epochs 50 --learning-rate 1e-3
 
-The best full model (`model.keras`) and latest model (`latest.keras`) are saved after epochs, alongside the vocabulary, training settings, loss curves, and unknown-word/truncation statistics. There is no step-resume command for this baseline; keep the tmux session and server running. These are Keras models, not Hugging Face Safetensors.
+This run stopped after 16 epochs; epoch 14 was selected by validation loss. The best model (`model.keras`) and latest model (`latest.keras`) are saved after epochs, alongside the vocabulary, settings, loss curves, and data-quality statistics. There is no step-resume command for this baseline; keep the tmux session and server running. These are Keras models, not Hugging Face Safetensors.
 
 Evaluate the same 200 test questions and reuse the saved Qwen answers:
 
     uv run healthcpt lstm-evaluate \
-      --model-dir runs/lstm_qa_full \
+      --model-dir runs/lstm_qa_50epochs \
       --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
-      --output-dir runs/qa_eval_lstm_test_200 --limit 200 --seed 5565 \
+      --output-dir runs/qa_eval_lstm_16epoch_test_200 --limit 200 --seed 5565 \
       --cached-qwen-predictions runs/qa_eval_cpt_sft_test_200/predictions.jsonl
 
-The script verifies question, reference, source-line, and data-hash alignment before computing the same text-overlap metrics for LSTM, Base, and CPT+SFT. LSTM word tokens and Qwen subword tokens differ, so their 512-token input and 128-token generation caps are not equivalent; disclose this in the report. LSTM word perplexity cannot be directly compared with Qwen perplexity. This comparison measures differences between complete model setups, including model size and pretraining exposure, rather than isolating architecture alone.
+The script verifies question, reference, source-line, and data-hash alignment before computing the same text-overlap metrics for LSTM, Base, and CPT+SFT. LSTM uses a 128-word generation cap while Qwen uses 128 subword tokens; these are not equivalent budgets. The comparison also reflects model size and pretraining exposure, not architecture alone.
 
 ## 13. Automatic accuracy on a public benchmark
 
@@ -361,4 +376,4 @@ Read the Python files by responsibility; all live under `src/healthcpt/`:
 | Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py`, `evaluate_mmlu.py` |
 | Shared QA sampling and metrics | `qa_metrics.py` |
 
-Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. Seeded 200-question validation/test evaluations and the LSTM comparison are recorded; the full test file, public MMLU subject evaluation, and manual answer review remain pending. See the [research overview](docs/research/README.en.md) for run settings, results, and limits. DPO and GRPO remain optional and are not implemented.
+Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. The final 16-epoch LSTM run and its 200-question test comparison are recorded. The Qwen BERTScore/infrastructure run, public MMLU subject evaluation, and manual answer review remain pending. The full 1,573-question MedQuAD test file has not been run. See the [research overview](docs/research/README.en.md) for results and limitations. DPO and GRPO remain optional and are not implemented.

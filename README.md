@@ -18,7 +18,7 @@ The installation instructions below clone the active work branch. For an existin
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT training and 200-question sampled evaluations are complete. The 128-example LSTM pilot completed on an RTX 4090. The current required work is full training and comparison on the same test questions. After runtime checks and result documentation, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO experiments get separate branches.
+CPT/SFT and LSTM have been compared on the same 200 test questions. Current work is the public MMLU subject evaluation, manual answer review, and report documentation. After runtime checks and result documentation, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO experiments get separate branches.
 
 TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 
@@ -361,4 +361,4 @@ Read the Python files by responsibility; all live under `src/healthcpt/`:
 | Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py`, `evaluate_mmlu.py` |
 | Shared QA sampling and metrics | `qa_metrics.py` |
 
-Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. Seeded 200-question validation and test samples have been evaluated; the full test file and manual answer review remain pending. See the [research overview](docs/research/README.en.md) for run settings, results, and limits. DPO and GRPO remain optional and are not implemented.
+Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. Seeded 200-question validation/test evaluations and the LSTM comparison are recorded; the full test file, public MMLU subject evaluation, and manual answer review remain pending. See the [research overview](docs/research/README.en.md) for run settings, results, and limits. DPO and GRPO remain optional and are not implemented.

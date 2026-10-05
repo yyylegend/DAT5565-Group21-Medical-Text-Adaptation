@@ -18,7 +18,7 @@
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT 已完成训练和 200 题抽样评测；LSTM 的 128 条 pilot 已在 RTX 4090 上完成；当前必做工作是全量训练及相同测试题对照。完成运行检查和结果记录后，再通过一个 PR 将课程主线合并到 `main`。额外的蒸馏、DPO、GRPO 实验另开分支。
+CPT/SFT 和 LSTM 已完成相同 200 道测试题的对比；当前工作是完成公开 MMLU 子集评测、人工抽查和报告记录。完成运行检查和结果记录后，再通过一个 PR 将课程主线合并到 `main`。额外的蒸馏、DPO、GRPO 实验另开分支。
 
 TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>`；Qwen 图文检查和问答评测仍在已有 PyTorch/Transformers 环境运行 `python src/healthcpt/...`。旧的 `cpt-pilot` 和 LSTM 模块命令继续可用。
 
@@ -361,4 +361,4 @@ Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
 | Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py`、`evaluate_mmlu.py` |
 | 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
-Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。验证集和测试集的 200 题抽样结果已记录；全量测试集和人工回答审查尚未完成。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。
+Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。验证集和测试集的 200 题抽样结果及 LSTM 对照已记录；全量测试集、公开 MMLU 子集与人工回答审查尚未完成。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 仍是可选扩展，尚未实现。

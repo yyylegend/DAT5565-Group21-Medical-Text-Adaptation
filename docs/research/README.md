@@ -12,7 +12,7 @@
 
 DPO 和 GRPO 暂作可选扩展：如果时间、数据和 TensorFlow/Keras 工具链允许，就从同一个 SFT 检查点分别继续训练。DPO 需要“较好回答/较差回答”成对数据；GRPO 还需要明确、可信的奖励打分规则。目前这些数据、奖励方式和训练实现都未确定，不能算核心计划。
 
-教授反馈已确认：至少 10,000 条医学文本或问答对满足数据要求；主要实验继续使用 TensorFlow/Keras/KerasHub，并必须补充课堂基础架构 baseline。我们选用从零训练的单向 LSTM 语言模型，结构为 Embedding(128) → LSTM(256) → Dense，词表上限 20,000、最大约 810 万参数。使用与 SFT 相同的 12,799 条训练问答和验证集，最多训练 5 个 epoch，再在相同 200 道测试题上比较回答的 Token F1、ROUGE-L 和模型成本。训练入口和命令见根目录 README；128 条训练问答、32 条验证问答的 1-epoch pilot 已在 RTX 4090 上完成，全量训练和问答评测待运行。Pilot 只验证运行流程，不能用于判断回答质量。
+教授反馈已确认：至少 10,000 条医学文本或问答对满足数据要求；主要实验继续使用 TensorFlow/Keras/KerasHub，并必须补充课堂基础架构 baseline。我们选用从零训练的单向 LSTM 语言模型，结构为 Embedding(128) → LSTM(256) → Dense，词表上限 20,000、最大约 810 万参数。使用与 SFT 相同的 12,799 条训练问答和验证集，最多训练 5 个 epoch，再在相同 200 道测试题上比较回答的 Token F1、ROUGE-L 和模型成本。训练入口和命令见根目录 README；pilot 与训练后的 200 题测试评测均已完成；实际训练 epoch、模型参数量和训练 loss 尚需从服务器 `runs/lstm_qa_full/run.json` 核对并归档。
 
 LSTM 可以生成文字，但有限数据下的回答可能重复或不切题。它的单词 tokenizer 与 Qwen 子词 tokenizer 不同，因此 perplexity 只在 LSTM 自己的词表内报告，不能跨模型直接比较；输入和输出 token 上限也不完全等价。Qwen 的大规模预训练知识和模型规模都影响结果，不能把性能差距全部归因于架构。先完成这个必做对照，再考虑额外 benchmark 或后训练扩展。
 
@@ -75,7 +75,7 @@ Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。
 - Transformers 检查成功加载 617 项权重，并完成了文本和图片推理。图片检查使用的是生成的纯色 PNG，所以只能说明模型能加载并接收图片输入；真实图片能力比较和人工问答质量评审尚未完成。
 - SFT 已在服务器完成 1 个 epoch：12,799 条训练问答、1,471 条验证问答，sequence length 512、batch size 1、LoRA rank 8、learning rate 2e-5、639 warmup steps。验证 loss 为 0.6134，token accuracy 为 0.7025；训练 loss 为 0.5879，token accuracy 为 0.6993。这些是拼接问答文本的 next-token 指标，不是医学问答正确率。长样本可能被 512-token 长度截断，截断比例未统计。
 - SFT 完整 Hugging Face 导出位于 `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal`。它将累计的 CPT+SFT LoRA 更新合并到原始 Base Safetensors 模型，并保留原始视觉权重。
-- `evaluate_qa.py` 当前运行设置为同一提示词、贪心生成、最多 128 个新 token、随机种子 5565。四次 200 题抽样结果如下；每行中的 Base 和候选模型来自同一次配对评测：
+- `evaluate_qa.py` 当前运行设置为同一提示词、贪心生成、最多 128 个新 token、随机种子 5565。以下保留四次 Qwen 配对评测，并加入 LSTM 在同一 200 道测试题上的结果；LSTM 行复用 CPT+SFT 测试运行中保存的 Base 回答：
 
   | Split | Candidate | Base token F1 | Candidate token F1 | Base ROUGE-L | Candidate ROUGE-L |
   |---|---|---:|---:|---:|---:|
@@ -83,8 +83,10 @@ Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。
   | Validation, n=200 | CPT+SFT | 0.2486 | 0.3421 | 0.1598 | 0.2702 |
   | Test, n=200 | CPT | 0.2540 | 0.2332 | 0.1582 | 0.1638 |
   | Test, n=200 | CPT+SFT | 0.2586 | 0.3248 | 0.1600 | 0.2622 |
+  | Test, n=200 | LSTM, cached Base | 0.2586 | 0.2092 | 0.1600 | 0.1797 |
 
-  四次评测的 normalized exact match 都为 0，且没有空回答。CPT 的 Token F1 低于同次 Base，ROUGE-L 略高；CPT+SFT 在这两个 200 题样本里的两项文字重合指标都高于同次 Base。这是初步结果，不证明医学回答正确。两次测试运行使用同一文件哈希、seed 和生成设置，但 Base 指标略有波动，因此应按每次运行内部的配对值解读，不要把不同运行的 Base 分数当成完全相同的基线。逐题回答和 JSON 汇总分别保存在服务器 `runs/qa_eval_*` 目录，不纳入 Git。
+  上述结果的 normalized exact match 都为 0，且没有空回答。CPT 的 Token F1 低于同次 Base，ROUGE-L 略高；CPT+SFT 在这两个 200 题样本里的两项文字重合指标都高于同次 Base。这是初步结果，不证明医学回答正确。两次测试运行使用同一文件哈希、seed 和生成设置，但 Base 指标略有波动，因此应按每次运行内部的配对值解读，不要把不同运行的 Base 分数当成完全相同的基线。逐题回答和 JSON 汇总分别保存在服务器 `runs/qa_eval_*` 目录，不纳入 Git。
+- LSTM 测试结果保存于服务器 `runs/qa_eval_lstm_test_200/`，复用的 Qwen 预测 SHA-256 为 `4ded3d20295a041d965cf6f74ad63c6b8fa6870aef3c4762ac30dda8080a14d3`。LSTM 的 Token F1 低于 Base，ROUGE-L 高于 Base；CPT+SFT 两项都高于 LSTM。LSTM 平均每题耗时 0.1256 秒、生成 71.275 个空格分词的单词；Qwen 尚未按相同方式记录耗时，不能计算速度提升倍数。两者使用不同词表，128 个 LSTM 单词与 128 个 Qwen 子词并非同一长度预算，perplexity 和 token 速度也不能直接横向比较。
 - 测试集共有 1,573 条记录，目前只评了按 seed 5565 抽取的 200 条；全量测试尚未运行。MedQuAD 是公开数据，但与训练数据来自同一数据集体系。
 - 另准备了 MMLU `professional_medicine` 的完整 272 道 test 题和 5 道 dev 提示示例，用来报告 5-shot 四选一准确率。数据来自 `cais/mmlu`，固定 revision 为 `c30699e8356da336a370243923dbaf21066bb9fe`。`evaluate_mmlu.py` 直接比较四个答案 token 的概率；test 答案不进入提示，不用于训练。当前仅完成数据、提示词与 tokenizer 检查，GPU 评测尚未运行。报告必须标明单科目与 5-shot 协议；这是医学考试评测，不是完整 MMLU 分数，也不能证明患者问答质量或公开题目未进入预训练数据。[MMLU 数据与原始实现](https://github.com/hendrycks/test)
 - `runqi/sft-work` 是当前课程主线工作分支，覆盖 CPT、SFT 和必做的 LSTM 对照。`main` 暂为 CPT 基线，基线标签为 `cpt-baseline-2026-09-28`；待 LSTM 运行检查和结果文档完成后，通过一个 PR 合入课程主线。

@@ -377,3 +377,24 @@ Read the Python files by responsibility; all live under `src/healthcpt/`:
 | Shared QA sampling and metrics | `qa_metrics.py` |
 
 Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. The final 16-epoch LSTM run and its 200-question test comparison are recorded. The Qwen BERTScore/infrastructure run, public MMLU subject evaluation, and manual answer review remain pending. The full 1,573-question MedQuAD test file has not been run. See the [research overview](docs/research/README.en.md) for results and limitations. DPO and GRPO remain optional and are not implemented.
+
+## 15. View the final results dashboard
+
+After downloading the final evaluation and training records into `runs/`, run from the project folder:
+
+    python scripts/build_results_dashboard.py --open
+
+This builds `runs/final_results.html` and opens it in your browser. The standalone page works offline, with bilingual, Chinese, and English views plus printing. It uses the latest Qwen `qa_eval_cpt_sft_test_200_infra` results, the complete MMLU medicine run, and the final LSTM results. It also reads the CPT/SFT and LSTM training records; no model weights or extra Python packages are required. LSTM uses a separate run on the same checked questions and references, with a different generation budget. The older cached Qwen scores are excluded. Rerun the command to refresh the page after updating the source files. The page lists source paths and SHA-256 hashes.
+
+CPT and SFT loss/accuracy curves use TensorBoard training points cached in `runs/training_curves.json`; LSTM curves use its epoch history. To create or refresh the cache after downloading new TensorBoard logs:
+
+    uv run --no-project --with tensorboard python scripts/extract_training_curves.py
+
+Then run the dashboard command above. The extractor uses TensorBoard in an isolated uv environment; it does not install TensorFlow or change the training environment.
+
+To add LSTM BERTScore without regenerating answers, run in the same PyTorch evaluation environment used for the final Qwen Infra run:
+
+    python src/healthcpt/score_lstm_bertscore.py --dry-run
+    python src/healthcpt/score_lstm_bertscore.py
+
+The script validates the 200 saved answers against the final Qwen questions/references and requires matching BERTScore and Transformers versions. It saves new `metrics.json` and `predictions.jsonl` under `runs/qa_eval_lstm_16epoch_test_200_bertscore/`, preserving the original results. Download that folder locally and rerun the dashboard generator to display the new score. Only the RoBERTa scoring model is needed; Qwen and LSTM weights are not loaded.

@@ -377,3 +377,24 @@ Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
 | 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
 Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。最终 16 轮 LSTM 训练及同一批 200 道测试题的对比已经记录。Qwen 的 BERTScore/推理资源评测、公开 MMLU 和人工回答审查仍待完成；MedQuAD 的 1,573 道测试题尚未全量运行。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 不属于核心范围，也未实现。
+
+## 15. 一键展示最终评测结果
+
+将最终评测和训练记录下载到 `runs/` 后，在项目目录运行：
+
+    python scripts/build_results_dashboard.py --open
+
+命令生成 `runs/final_results.html` 并用浏览器打开。页面可离线查看，支持中英对照、中文、英文和打印。Qwen 问答统一使用最新的 `qa_eval_cpt_sft_test_200_infra`，另展示完整 MMLU 医学子集和最终 LSTM 结果，并读取 CPT/SFT、LSTM 训练记录；不需要模型权重或额外 Python 包。LSTM 来自独立运行，已核对同一批题目和参考答案，但生成长度预算不同；旧缓存 Qwen 分数不用于本页。源文件更新后重新运行即可刷新，页面列出来源路径和 SHA-256。
+
+CPT、SFT 的 loss/accuracy 曲线读取 TensorBoard 训练采样点，缓存为 `runs/training_curves.json`；LSTM 曲线读取逐轮历史。首次生成缓存，或下载新的 TensorBoard 日志后，运行：
+
+    uv run --no-project --with tensorboard python scripts/extract_training_curves.py
+
+然后运行上面的展示页命令。提取过程使用独立 uv 环境中的 TensorBoard，不安装 TensorFlow，也不改变训练环境。
+
+补算 LSTM BERTScore 时，在最终 Qwen Infra 评测使用的 PyTorch 环境运行，无需重新生成回答：
+
+    python src/healthcpt/score_lstm_bertscore.py --dry-run
+    python src/healthcpt/score_lstm_bertscore.py
+
+脚本核对已有 200 条回答与最终 Qwen 的题目、参考答案，并要求 BERTScore、Transformers 版本一致。新结果存入 `runs/qa_eval_lstm_16epoch_test_200_bertscore/`，包含 `metrics.json` 和 `predictions.jsonl`，原结果保持不变。下载这个目录到本地，再运行展示页脚本即可显示新增分数。评分只需要 RoBERTa，不加载 Qwen 或 LSTM 权重。

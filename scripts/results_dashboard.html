@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DAT5565 · 最终评测 / Final evaluation</title>
+<style>
+:root{--paper:#f7f8f4;--ink:#20362f;--muted:#52665e;--line:#ccd7cf;--base:#65778b;--candidate:#16704e;--lstm:#a46720}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 "Segoe UI","Microsoft YaHei",sans-serif}main{max-width:1180px;margin:auto;padding:40px clamp(18px,4vw,54px) 64px}header{border-top:5px solid var(--candidate);padding-top:24px}h1{font:600 clamp(30px,4vw,48px)/1.25 Georgia,"Microsoft YaHei",serif;margin:16px 0}h2{font-size:24px;line-height:1.4;margin:0 0 18px}h3{font-size:17px;margin:0 0 14px}p{margin:10px 0}.en{display:block;font-size:.85em;font-weight:400;color:var(--muted)}.eyebrow{font-size:13px;letter-spacing:.12em;color:var(--muted)}.topline{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.toolbar{display:flex;gap:8px;flex-wrap:wrap}button,select{font:inherit;color:var(--ink);background:transparent;border:1px solid #889c90;padding:7px 12px;border-radius:3px;cursor:pointer}button:hover{background:#e3ece4}button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #a46720;outline-offset:3px}.scope{display:flex;gap:24px;flex-wrap:wrap;padding:20px 0;border-bottom:1px solid var(--line);margin:20px 0 0}.scope span{font-size:14px}.scope strong{font-size:20px}section{padding:34px 0;border-bottom:1px solid var(--line)}.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px}.grid>*{min-width:0}.chartbox{background:#eef2eb;padding:20px}.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}.dot{display:inline-block;width:10px;height:10px;margin-right:6px;background:var(--base)}.note{font-size:14px;color:var(--muted);margin-top:16px}.tablewrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}caption{text-align:left;font-weight:600;margin-bottom:12px}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-weight:600;color:var(--muted)}td:not(:first-child){font-variant-numeric:tabular-nums}svg{width:100%;height:auto;display:block}svg text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;fill:var(--muted);font-size:12px}.bars{margin:16px 0}.barrow{display:grid;grid-template-columns:95px 1fr 72px;gap:12px;align-items:center;margin:16px 0;font-size:14px}.track{height:20px;background:#dde5da}.bar{height:100%}details{margin-top:20px}summary{cursor:pointer;font-weight:600}.source{font-size:13px;margin:14px 0;overflow-wrap:anywhere}.hash{font-family:Consolas,monospace;font-size:11px;color:var(--muted)}footer{padding-top:24px;font-size:13px;color:var(--muted)}[data-mode="zh"] [lang="en"]{display:none}[data-mode="en"] [lang="zh-CN"]{display:none}[data-mode="en"] .en{font-size:1em}.axis{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+@media(max-width:760px){.grid{grid-template-columns:1fr}main{padding-top:22px}.scope{gap:16px}th,td{padding:10px 8px}h2{font-size:21px}}
+@media print{body{background:#fff}main{padding:0;max-width:none}.toolbar{display:none}section{break-inside:avoid;padding:22px 0}.chartbox{-webkit-print-color-adjust:exact;print-color-adjust:exact}details{display:none}}
+.training-stage{padding:24px 0;border-top:1px solid var(--line)}.training-stage h3{font-size:21px}.training-stage h4{font-size:14px;margin:16px 0 4px}.training-stage p .en{display:inline;font-size:1em}.training-stage p [lang="en"]{margin-left:4px}
+</style>
+</head>
+<body data-mode="both"><main>
+<header>
+<div class="topline"><div class="eyebrow">DAT5565 · GROUP 21 · MEDICAL TEXT ADAPTATION</div><div class="toolbar"><label for="language" class="en">语言 / Language</label><select id="language"><option value="both">中英对照 / Bilingual</option><option value="zh">中文</option><option value="en">English</option></select><button id="print">打印 / Print</button></div></div>
+<h1><span lang="zh-CN">医疗文本适配 · 最终评测</span><span lang="en" class="en">Medical text adaptation · Final evaluation</span></h1>
+<div class="scope" id="scope"></div>
+</header>
+<noscript>请启用 JavaScript 查看图表。 / Enable JavaScript to view the dashboard.</noscript>
+<section><h2><span lang="zh-CN">01 / 医疗问答</span><span lang="en" class="en">Medical question answering</span></h2><div class="grid"><div><div class="tablewrap" id="qa-table"></div><p class="note"><span lang="zh-CN">— 未测量</span><span lang="en" class="en">— Not measured</span></p></div><div class="chartbox"><h3>Token F1 · ROUGE-L F1</h3><div class="legend" id="qa-legend"></div><div id="qa-chart"></div></div></div>
+<p class="note">Qwen: 128 tokens · LSTM: 128 words</p></section>
+<section><h2><span lang="zh-CN">02 / MMLU 医学子集</span><span lang="en" class="en">MMLU professional_medicine</span></h2><div class="grid"><div><div id="mmlu-bars" class="bars"></div><div class="axis"><span>0%</span><span>100%</span></div><p class="note" id="mmlu-delta"></p></div><div class="tablewrap" id="paired-table"></div></div><p class="note">professional_medicine · 272 questions · 5-shot · A/B/C/D next-token scoring</p></section>
+<section><h2><span lang="zh-CN">03 / Qwen 推理资源</span><span lang="en" class="en">Qwen inference resources</span></h2><div class="tablewrap" id="infra-table"></div><p class="note">Batch size 1 · Warm-up 3 · PyTorch allocated memory</p></section>
+<section><h2><span lang="zh-CN">04 / 训练曲线</span><span lang="en" class="en">Training curves</span></h2><div id="training-stages"></div></section>
+<details><summary><span lang="zh-CN">评测设置与数据来源</span><span lang="en" class="en">Evaluation settings and sources</span></summary><p class="note"><span lang="zh-CN">QA 为 200 题抽样，Qwen 使用最新 Infra 结果。LSTM 使用相同题目，生成预算不同。文字相似度与考试准确率不代表临床有效性。</span><span lang="en" class="en">QA uses a 200-question sample and the latest Qwen Infra results. LSTM uses the same questions with a different generation budget. Similarity and exam accuracy do not establish clinical validity.</span></p><div id="settings"></div><div id="sources"></div></details>
+<footer>DAT5565 · Group 21</footer>
+</main>
+<script id="results" type="application/json">{{DATA}}</script>
+<script>
+'use strict';
+const d=JSON.parse(document.getElementById('results').textContent);
+const colors=['#65778b','#16704e','#a46720'];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const bi=(zh,en)=>`<span lang="zh-CN">${esc(zh)}</span><span lang="en" class="en">${esc(en)}</span>`;
+const fmt=(v,n=4)=>v==null?'—':Number(v).toFixed(n);
+const put=(id,s)=>document.getElementById(id).innerHTML=s;
+function table(headers,rows){return `<table><thead><tr>${headers.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((v,i)=>i?`<td>${v}</td>`:`<th scope="row">${v}</th>`).join('')}</tr>`).join('')}</tbody></table>`;}
+put('scope',`<span><strong>${d.qa.evaluation_examples}</strong> ${bi('QA 测试题 · 固定抽样','QA test questions · seeded sample')}</span><span><strong>${d.mmlu.examples}</strong> ${bi('MMLU 题 · 5-shot','MMLU questions · 5-shot')}</span><span><strong>${esc(d.qa.gpu)}</strong> ${bi('评测 GPU','Evaluation GPU')}</span>`);
+const models=[['Base',d.qa.metrics.base],['CPT+SFT',d.qa.metrics.candidate],['LSTM',d.lstm_eval.metrics.LSTM]];
+put('qa-table',table([bi('模型','Model'),'Exact Match','Token F1','ROUGE-L F1','BERTScore F1'],models.map(([name,m])=>[name,...['normalized_exact_match','token_f1','rouge_l_f1','bertscore_f1'].map(k=>fmt(m[k]))])));
+put('qa-legend',models.map(([n],i)=>`<span><i class="dot" style="background:${colors[i]}"></i>${n}</span>`).join(''));
+let bars='';
+for(let t=0;t<=4;t++){let y=230-t*50;bars+=`<line x1="40" y1="${y}" x2="460" y2="${y}" stroke="#cbd6c9"/><text x="30" y="${y+4}" text-anchor="end">${t/4}</text>`;}
+['token_f1','rouge_l_f1'].forEach((k,g)=>{models.forEach(([n,m],i)=>{const x=95+g*220+i*42,h=m[k]*200;bars+=`<rect x="${x}" y="${230-h}" width="30" height="${h}" fill="${colors[i]}"><title>${n} ${k}: ${fmt(m[k])}</title></rect><text x="${x+15}" y="${223-h}" text-anchor="middle">${fmt(m[k],3)}</text>`;});bars+=`<text x="${150+g*220}" y="258" text-anchor="middle">${g?'ROUGE-L F1':'Token F1'}</text>`;});
+put('qa-chart',`<svg viewBox="0 0 500 280" role="img" aria-label="QA Token F1 and ROUGE-L F1 on a zero to one scale">${bars}</svg>`);
+put('mmlu-bars',['base','candidate'].map((k,i)=>{let m=d.mmlu.models[k];return `<div class="barrow"><span>${esc(m.name)}</span><div class="track"><div class="bar" style="width:${m.accuracy*100}%;background:${colors[i]}"></div></div><strong>${fmt(m.accuracy*100,2)}%</strong></div><p class="note">${m.correct} / ${d.mmlu.examples}</p>`;}).join(''));
+put('mmlu-delta',bi(`净增加 ${d.mmlu.models.candidate.correct-d.mmlu.models.base.correct} 道正确题，准确率差 ${fmt((d.mmlu.models.candidate.accuracy-d.mmlu.models.base.accuracy)*100,2)} 个百分点。`,`Net gain: ${d.mmlu.models.candidate.correct-d.mmlu.models.base.correct} correct answers; accuracy difference: ${fmt((d.mmlu.models.candidate.accuracy-d.mmlu.models.base.accuracy)*100,2)} percentage points.`));
+put('paired-table',table([bi('逐题配对结果','Paired outcomes'),bi('题数','Questions')],[['both_correct','两者都正确','Both correct'],['candidate_only_correct','仅 CPT+SFT 正确','CPT+SFT only correct'],['base_only_correct','仅 Base 正确','Base only correct'],['both_wrong','两者都错误','Both incorrect']].map(([k,z,e])=>[bi(z,e),d.mmlu.paired_counts[k]])));
+const infraRows=[['平均延迟（秒）','Mean latency (s)',m=>fmt(m.request_latency_seconds.mean)],['P95 延迟（秒）','P95 latency (s)',m=>fmt(m.request_latency_seconds.p95_nearest_rank)],['生成速度（token/秒）','Generation throughput (tokens/s)',m=>fmt(m.output_tokens_per_second)],['平均输出 token 数','Mean output token IDs',m=>fmt(m.average_output_token_ids,2)],['峰值已分配显存（MiB）','Peak allocated memory (MiB)',m=>fmt(m.gpu_memory_mib.peak_allocated,2)],['加载时间（秒）','Model load time (s)',m=>fmt(m.model_load_seconds)],['模型目录大小（GiB）','Model directory size (GiB)',m=>fmt(m.model_files_size_bytes/2**30,3)]];
+put('infra-table',table([bi('指标','Metric'),'Base','CPT+SFT'],infraRows.map(([z,e,f])=>[bi(z,e),f(d.qa.infrastructure.base),f(d.qa.infrastructure.candidate)])));
+function curve(series, xmax, ylabel, accuracy=false, epoch=false){
+ const ymax=accuracy?1:Math.ceil(Math.max(...series.flatMap(s=>s.points.map(p=>p[1])))*1.08*4)/4;
+ const xmin=epoch?1:0,x=v=>48+(v-xmin)*410/(xmax-xmin),y=v=>210-v/ymax*180;
+ let plot='';
+ for(let i=0;i<=4;i++){
+  const val=ymax*i/4;
+  plot+=`<line x1="48" y1="${y(val)}" x2="458" y2="${y(val)}" stroke="#cbd6c9"/><text x="38" y="${y(val)+4}" text-anchor="end">${fmt(val,2)}</text>`;
+  const tick=Math.round(xmin+(xmax-xmin)*i/4);
+  plot+=`<text x="${x(tick)}" y="232" text-anchor="middle">${tick>=1000?fmt(tick/1000,1)+'k':tick}</text>`;
+ }
+ series.forEach(line=>{
+  plot+=`<polyline points="${line.points.map(([step,v])=>`${x(step)},${y(v)}`).join(' ')}" fill="none" stroke="${line.color}" stroke-width="2.5"/>`;
+  line.points.forEach(([step,v])=>plot+=`<circle cx="${x(step)}" cy="${y(v)}" r="${epoch?3:1.5}" fill="${line.color}"><title>${line.name}, ${epoch?'epoch':'step'} ${step}: ${fmt(v)}</title></circle>`);
+ });
+ plot+=`<text x="250" y="260" text-anchor="middle">${epoch?'Epoch / 轮次':'Step / 训练步数'}</text>`;
+ return `<svg viewBox="0 0 500 275" role="img" aria-label="${esc(ylabel)}">${plot}</svg>`;
+}
+const hist=d.lstm_train.history;
+const stages=[
+ {name:'CPT',run:d.cpt_train,points:d.training_curves.cpt},
+ {name:'SFT',run:d.sft_train,points:d.training_curves.sft},
+ {name:'LSTM',run:d.lstm_train,points:{loss:hist.loss.map((v,i)=>[i+1,v]),accuracy:hist.token_accuracy.map((v,i)=>[i+1,v])}}
+];
+put('training-stages',stages.map(stage=>{
+ const isLstm=stage.name==='LSTM',run=stage.run;
+ const xmax=isLstm?run.completed_epochs:run.total_training_steps;
+ const series=metric=>[{name:'Train',color:colors[isLstm?2:1],points:stage.points[metric]},...(isLstm?[{name:'Validation',color:colors[0],points:hist[metric==='loss'?'val_loss':'val_token_accuracy'].map((v,i)=>[i+1,v])}]:[])];
+ const best=isLstm?run.selected_epoch-1:0;
+ const loss=run.history.loss[best],valLoss=run.history.val_loss[best];
+ const label=isLstm?bi(`${run.completed_epochs} 轮 · 最佳第 ${run.selected_epoch} 轮`,`${run.completed_epochs} epochs · best epoch ${run.selected_epoch}`):bi(`${stage.points.loss.length} 个采样点 · 累计训练指标`,`${stage.points.loss.length} samples · running training metrics`);
+ return `<div class="training-stage"><h3>${stage.name}<span class="en">${label}</span></h3><div class="legend"><span><i class="dot" style="background:${colors[isLstm?2:1]}"></i>Train</span>${isLstm?`<span><i class="dot" style="background:${colors[0]}"></i>Validation</span>`:''}</div><div class="grid"><div><h4>Loss</h4>${curve(series('loss'),xmax,stage.name+' training loss',false,isLstm)}</div><div><h4>${bi('Token 准确率','Token accuracy')}</h4>${curve(series('accuracy'),xmax,stage.name+' token accuracy',true,isLstm)}</div></div><p class="note">${bi('训练 loss','Train loss')} ${fmt(loss)} · ${bi('验证 loss','Validation loss')} ${fmt(valLoss)}</p></div>`;
+}).join(''));
+put('settings',table([bi('设置','Setting'),bi('取值','Value')],[['QA seed',d.qa.sampling_seed],['QA prompt',esc(d.qa.prompt_template)],['QA generation',esc(JSON.stringify(d.qa.generation))],['BERTScore',esc(JSON.stringify(d.qa.metrics.bertscore))],['MMLU dataset revision',esc(d.mmlu.dataset_revision)],['PyTorch / Transformers',esc(d.qa.torch+' / '+d.qa.transformers)],['QA run UTC',esc(d.qa.created_utc)],['MMLU run UTC',esc(d.mmlu.created_utc)]]));
+put('sources',d.sources.map(s=>`<div class="source">${esc(s.path)}<div class="hash">SHA-256 ${esc(s.sha256)}</div></div>`).join(''));
+document.getElementById('language').addEventListener('change',e=>{document.body.dataset.mode=e.target.value;document.documentElement.lang=e.target.value==='en'?'en':'zh-CN';});
+document.getElementById('print').addEventListener('click',()=>window.print());
+
+</script></body></html>

@@ -1,6 +1,6 @@
 # Medical Question Answering Model: Research and Data Preparation
 
-Updated: 2026-10-05. The submitted proposal remains unchanged. This document records the plan, completed CPT/SFT experiments, and required foundational baseline. See the [简体中文版](README.md).
+Updated: 2026-10-07. The submitted proposal remains unchanged. This document records the plan, completed CPT/SFT experiments, and required foundational baseline. See the [简体中文版](README.md).
 
 ## Project question
 
@@ -12,7 +12,7 @@ DPO and GRPO are optional extensions if time, data, and the TensorFlow/Keras too
 
 Instructor feedback approved at least 10,000 medical text records or QA pairs and requires primary TensorFlow/Keras/KerasHub experiments plus a foundational architecture baseline. We use a forward LSTM language model trained from scratch: Embedding(128) → LSTM(256) → Dense, with a 20,000-word vocabulary and 8,094,240 parameters. It uses the same 12,799 QA training rows and validation split as SFT. The final run used a 50-epoch cap with validation-loss early stopping, completed 16 epochs, and selected epoch 14 as the best checkpoint. It was compared on the same 200 test questions as Base and CPT+SFT. Commands and run records are in the root README and `runs/lstm_qa_50epochs/run.json`.
 
-The LSTM can generate text, but limited training data may lead to repetitive or irrelevant answers. Its word tokenizer differs from Qwen's subword tokenizer, so report word perplexity only within the LSTM vocabulary; cross-model perplexity comparisons and token caps are not equivalent. Model size and Qwen's large pretraining exposure also affect results, so differences cannot be attributed solely to architecture. The current 200-question QA comparison uses text-overlap metrics. Remaining work is the Qwen BERTScore and inference-resource evaluation, the public benchmark, and manual answer review.
+The LSTM can generate text, but limited training data may lead to repetitive or irrelevant answers. Its word tokenizer differs from Qwen's subword tokenizer, so report word perplexity only within the LSTM vocabulary; cross-model perplexity comparisons and token caps are not equivalent. Model size and Qwen's large pretraining exposure also affect results, so differences cannot be attributed solely to architecture. The current 200-question QA comparison uses text-overlap metrics. The final Qwen BERTScore and inference-resource run and the public MMLU benchmark are complete; manual answer review remains outstanding.
 
 ## What the datasets contain
 
@@ -85,16 +85,33 @@ The Base, CPT, and CPT+SFT models use the same questions, prompt, and generation
 
   Normalized exact match was 0 for all listed results, and there were no empty predictions. CPT had lower token F1 and slightly higher ROUGE-L than its paired Base run. CPT+SFT scored higher than its paired Base on both text-overlap metrics in both 200-example samples. These preliminary results do not establish medical correctness. The two test runs used the same file hash, seed, and generation settings, but their Base scores varied slightly; interpret the paired scores within each run rather than treating Base values from different runs as identical. Per-question predictions and JSON summaries are on the server under `runs/qa_eval_*`; they are not tracked by Git.
 
-- The table preserves the existing QA results. The updated paired evaluator also records model weight-loading time, per-question latency (median and P95), generated tokens per second, peak allocated/reserved GPU memory, and model-folder file size. BERTScore F1 is optional. This run is still pending, so those fields have no results yet. Keep the RTX 4090, 200 test questions, prompt, and generation settings fixed; warm-up questions are excluded from latency statistics. BERTScore adds semantic similarity but still does not establish medical correctness.
+- The QA table immediately above records earlier run-specific comparisons. Use the final result tables below for reporting: the latest Base/CPT+SFT values and inference-resource measurements come from `runs/qa_eval_cpt_sft_test_200_infra/`; CPT-only values come from the older `runs/qa_eval_cpt_test_200/` run. LSTM BERTScore was later calculated from the saved LSTM answers under the same scorer settings. The earlier cached-Qwen LSTM comparison is historical because its Base output differs from the final Infra run. Similarity scores do not establish medical correctness.
 - The final LSTM run used 8,094,240 parameters, a 20,000-word vocabulary, embedding size 128, hidden size 256, sequence length 512, batch size 8, Adam learning rate 1e-3, Dropout 0.2, and early-stopping patience 2 with TensorFlow 2.21.0/Keras 3.15.1. It completed 16 of 50 allowed epochs; the checkpoint with the lowest validation loss was epoch 14. Training, validation, and saving took 1,778.20 seconds (about 29 minutes 38 seconds). The selected checkpoint had validation loss 2.9958, token accuracy 0.5110, corpus-level target-word NLL 2.9100, and word perplexity 18.356. These word-level perplexity values are not directly comparable with Qwen subword metrics.
 - LSTM truncated 657/12,799 training texts (5.13%) and 102/1,471 validation texts (6.93%); unknown-word fractions were 2.20% and 3.62%. The complete saved `model.keras` is 97,164,406 bytes (about 97.2 MB), including optimizer state. FP32 parameter storage alone is about 32.4 MB; distinguish these when reporting deployment size.
-- LSTM test results are in `runs/qa_eval_lstm_16epoch_test_200/`; the reused Qwen prediction SHA-256 is `4ded3d20295a041d965cf6f74ad63c6b8fa6870aef3c4762ac30dda8080a14d3`. On the same 200 questions, LSTM scored token F1 0.2525 and ROUGE-L 0.2067; Base scored 0.2586 and 0.1600; CPT+SFT scored 0.3248 and 0.2622. Exact match was 0 and no predictions were empty. LSTM averaged 0.1242 seconds per answer and generated 86.115 whitespace-separated words. Qwen runtime measurements are pending. The 128-word LSTM cap and 128-subword Qwen cap are different budgets, so compare answer latency cautiously and do not compare their token speeds directly.
+- The LSTM metrics in the old comparison above reuse Qwen predictions from a different run; keep them as historical context. The final LSTM results use the same 200 questions and references as the final Infra run. They are listed in the final QA table below. LSTM averaged 0.1242 seconds per answer and generated 86.115 words under its 128-word cap; Qwen used a 128-subword-token cap, so these generation budgets and throughputs are not equivalent.
 - The test file contains 1,573 rows; only a seed-5565 sample of 200 has been evaluated so far. The full test split has not been run. MedQuAD is public, but this held-out split comes from the same dataset family as training.
-- An additional public benchmark is prepared: all 272 MMLU `professional_medicine` test questions with five dev demonstrations, reported as 5-shot four-choice accuracy. Data comes from `cais/mmlu` at revision `c30699e8356da336a370243923dbaf21066bb9fe`. `evaluate_mmlu.py` compares four answer-token probabilities directly; test answers never enter prompts or training. Data, prompt, and tokenizer checks passed; GPU evaluation is pending. Label the subject and protocol explicitly. This is medical exam evaluation, not the full MMLU score or evidence of patient-answer quality, and pretrained models may already have seen public questions. [MMLU data and original implementation](https://github.com/hendrycks/test)
-- `runqi/sft-work` is the active course pipeline branch covering CPT, SFT, and the required LSTM baseline. `main` currently holds the CPT baseline, preserved by tag `cpt-baseline-2026-09-28`. Merge the course pipeline through one PR after public benchmarking and final report documentation are complete.
+- The full `professional_medicine` test subject was scored: 272 questions with five dev demonstrations (5-shot). `evaluate_mmlu.py` chooses among the next-token probabilities for A/B/C/D; test labels do not enter prompts or training. Report this as a single MMLU subject, not the aggregate benchmark. It measures exam questions rather than patient-answer quality, and pretrained models may have seen public benchmark items. [MMLU data and original implementation](https://github.com/hendrycks/test)
+- `runqi/sft-work` is the active course pipeline branch covering CPT, SFT, and the required LSTM baseline. `main` currently holds the CPT baseline, preserved by tag `cpt-baseline-2026-09-28`. The public MMLU run is complete. Before integrating the course branch, review the Word report and other course deliverables, then recheck the current branch and remote and use a PR.
 - Training targets a Linux GPU server with dependencies managed by `uv`. WSL is not needed to prepare or inspect the data locally.
 
 If DPO or GRPO is attempted later, both should branch independently from the same SFT checkpoint. Define and version the preference data, reward rule, and evaluation set before starting. A higher reward score alone does not prove that answers improved. If the toolchain or data are not ready in time, complete the Base→CPT→SFT workflow.
+
+## Final held-out results (updated 2026-10-07)
+
+The latest QA comparison uses the same seed-5565 sample of 200 questions from the 1,573-row cleaned test set. Base and CPT+SFT scores below come from the Infra run. CPT and LSTM scores come from their saved evaluation runs; LSTM BERTScore was added afterward with the same RoBERTa scoring hash.
+
+| Model | Normalized EM | Token F1 | ROUGE-L F1 | BERTScore F1 |
+|---|---:|---:|---:|---:|
+| Base | 0 | 0.2540 | 0.1582 | 0.8378 |
+| CPT | 0 | 0.2332 | 0.1638 | Not measured |
+| CPT+SFT | 0 | 0.3269 | 0.2646 | 0.8611 |
+| LSTM | 0 | 0.2525 | 0.2067 | 0.8253 |
+
+All four runs had zero empty answers. CPT-only results were mixed; the complete CPT+SFT pipeline scored higher than Base on all three measured similarity metrics. The missing SFT-only control means the separate contribution of CPT is not measured. Scores compare text with references and do not establish medical correctness.
+
+On the complete MMLU `professional_medicine` subject with five-shot prompts, Base scored 165/272 (60.66%) and CPT+SFT scored 170/272 (62.50%). The paired outcomes were 149 both correct, 21 CPT+SFT only correct, 16 Base only correct, and 86 both wrong. This is a five-answer difference in one subject and one run.
+
+The final Infra run used an RTX 4090, batch size 1, and three warm-up requests per model. Base/CPT+SFT mean latency was 3.5803/3.3414 seconds, P95 latency was 3.6273/3.6378 seconds, generation throughput was 35.5645/35.6234 tokens per second, and peak allocated memory was 4252.70/4253.08 MiB. CPT+SFT answers were shorter on average (119.00 versus 127.29 token IDs), so mean latency alone does not show a speed improvement. LSTM latency and word count use a different output unit and are not a direct speed comparison.
 
 ## Recommended reading
 

@@ -18,7 +18,7 @@ The installation instructions below clone the active work branch. For an existin
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT and the final 16-epoch LSTM checkpoint have been compared on the same 200 test questions. Remaining work is the Qwen BERTScore/infrastructure run, public MMLU evaluation, manual answer review, and final report documentation. After these results are recorded, merge the course pipeline into `main` through one PR. Optional distillation, DPO, and GRPO are out of scope for the core report.
+The final test evaluations are recorded: Base, CPT, CPT+SFT, and LSTM were compared on the same seeded sample of 200 QA questions; BERTScore and Qwen inference resources were recorded in the final Infra run; and the full 272-question MMLU professional_medicine subject was scored. The full 1,573-question QA test set and systematic human answer review remain outstanding. The current report is a LaTeX first draft; the course requires a Word report, and the required explainability work, cross-validation plan, deployment documentation, presentation, and collaboration survey still need attention. See the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The LaTeX report source is kept locally in Git-ignored `docs/final-report/`. DPO and GRPO were not implemented.
 
 TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 
@@ -356,9 +356,11 @@ For an execution pilot, add `--limit 10` and choose another output folder. Run t
       --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
       --output-dir runs/mmlu_professional_medicine_5shot
 
-The script selects the largest next-token probability among ` A`, ` B`, ` C`, and ` D`; it does not generate long responses or require a paid judge. Both models see the same 272 questions and five dev demonstrations. Test gold labels never enter prompts. `metrics.json` records accuracy, correct counts, paired outcomes, and settings; per-question predictions are saved as JSONL. Download, prompt, and tokenizer checks passed; server GPU scoring remains pending. Public benchmark content may have appeared in pretrained models' training data, so the score does not establish clinical safety or a completely contamination-free evaluation.
+The recorded full-subject run compares the highest next-token probabilities for ` A`, ` B`, ` C`, and ` D`; it does not generate long answers. Both models received the same 272 questions and five dev demonstrations, and test labels were not included in prompts. Results and per-question predictions are in `runs/mmlu_professional_medicine_5shot/`. The report should call this “MMLU professional_medicine, 5-shot accuracy,” not the full MMLU score. It measures exam questions, not clinical safety; public benchmark items may also have appeared in pretraining.
 
 ## Project files
+Current course deliverables and remaining items are listed in the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The local Overleaf project is in `docs/final-report/`, a Git-ignored folder. The executed course notebook is `Final_Project.ipynb`. The Overleaf ZIP contains report sources only, not the complete course-submission archive.
+
 
 - data/: raw sources and processed datasets; not tracked by Git.
 - models/: downloaded model cache; not tracked by Git.
@@ -376,7 +378,7 @@ Read the Python files by responsibility; all live under `src/healthcpt/`:
 | Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py`, `evaluate_mmlu.py` |
 | Shared QA sampling and metrics | `qa_metrics.py` |
 
-Qwen3.5-2B CPT and SFT runs are complete. The CPT Hugging Face export passed a basic Transformers text/image check; the SFT export loaded for QA text evaluation. The final 16-epoch LSTM run and its 200-question test comparison are recorded. The Qwen BERTScore/infrastructure run, public MMLU subject evaluation, and manual answer review remain pending. The full 1,573-question MedQuAD test file has not been run. See the [research overview](docs/research/README.en.md) for results and limitations. DPO and GRPO remain optional and are not implemented.
+CPT, SFT, and the LSTM baseline are trained. Final QA comparisons, LSTM BERTScore, Qwen infrastructure measurements, and the full MMLU professional_medicine subject evaluation are saved under `runs/`. The latest Base/CPT+SFT metrics are from `qa_eval_cpt_sft_test_200_infra`; the earlier CPT-only run is kept for stage-wise analysis. Only 200 of 1,573 QA test questions were evaluated. Human answer review and several course deliverables remain outstanding. See the [research overview](docs/research/README.en.md) and [submission checklist](docs/SUBMISSION_CHECKLIST.md).
 
 ## 15. View the final results dashboard
 
@@ -398,3 +400,15 @@ To add LSTM BERTScore without regenerating answers, run in the same PyTorch eval
     python src/healthcpt/score_lstm_bertscore.py
 
 The script validates the 200 saved answers against the final Qwen questions/references and requires matching BERTScore and Transformers versions. It saves new `metrics.json` and `predictions.jsonl` under `runs/qa_eval_lstm_16epoch_test_200_bertscore/`, preserving the original results. Download that folder locally and rerun the dashboard generator to display the new score. Only the RoBERTa scoring model is needed; Qwen and LSTM weights are not loaded.
+
+## 16. Course submission notebook
+
+Open `Final_Project.ipynb` at the repository root. It includes saved, executed tables and figures, implementation excerpts, data preparation and model execution entry points, metric recomputation, and provenance checks. The notebook uses short English explanations. It complements the source modules and the final Word report.
+
+To rerun the lightweight analysis in Python 3.11 or 3.12:
+
+    python -m pip install -r requirements-notebook.txt
+
+Select that Python kernel in your notebook editor, then Run All. Keep the prepared files under `data/processed/` and the downloaded evaluation/training records under `runs/`, including `training_curves.json` and the LSTM vocabulary. Default execution reads these artifacts and displays results; it does not train, run inference, download models, or require TensorFlow/PyTorch. Saved outputs remain readable when those artifacts are unavailable.
+
+The `RUN_DATA_PREPARATION`, `RUN_TRAINING`, `RUN_EXPORT`, `RUN_INFERENCE`, and `RUN_BERTSCORE` switches are initially false. Enable an operation only in the corresponding environment documented above. Reproduction commands write into `runs/notebook_reproduction/`. Submit the notebook together with the source code, environment files, and the necessary result artifacts; weights can remain separate. Manual answer review, a dedicated explainability analysis, and final team interpretations are not completed by executing this notebook.

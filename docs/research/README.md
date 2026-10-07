@@ -2,7 +2,7 @@
 
 **语言 / Language:** 简体中文 | [English](README.en.md)
 
-更新：2026-10-05。已提交的 proposal 保留原稿；本文件记录实验方案、已完成的 CPT/SFT 和教授要求的基础模型对照。
+更新：2026-10-07。已提交的 proposal 保留原稿；本文件记录实验方案、已完成的 CPT/SFT 和教授要求的基础模型对照。
 
 ## 项目要回答什么
 
@@ -14,7 +14,7 @@ DPO 和 GRPO 暂作可选扩展：如果时间、数据和 TensorFlow/Keras 工�
 
 教授反馈已确认：至少 10,000 条医学文本或问答对满足数据要求；主要实验继续使用 TensorFlow/Keras/KerasHub，并必须补充课堂基础架构 baseline。我们使用从零训练的单向 LSTM：Embedding(128) → LSTM(256) → Dense，词表 20,000，参数量 8,094,240。它使用与 SFT 相同的 12,799 条训练问答和验证集。最终训练上限为 50 轮，按验证 loss 早停；实际完成 16 轮，最佳 checkpoint 为第 14 轮，并在相同 200 道测试题上与 Base、CPT+SFT 对比。命令见根目录 README，记录保存在服务器 `runs/lstm_qa_50epochs/run.json`。
 
-LSTM 可以生成文字，但有限数据下的回答可能重复或不切题。它的单词 tokenizer 与 Qwen 子词 tokenizer 不同，因此 perplexity 只在 LSTM 自己的词表内报告，不能跨模型直接比较；128 个生成词和 128 个 Qwen 子词也不是相同长度预算。Qwen 的大规模预训练知识和模型规模都会影响结果，不能把差异全部归因于架构。剩余工作是完成 Qwen 的 BERTScore/推理资源评测、公开 benchmark 和人工答案审查。
+LSTM 可以生成文字，但有限数据下的回答可能重复或不切题。它的单词 tokenizer 与 Qwen 子词 tokenizer 不同，因此 perplexity 只在 LSTM 自己的词表内报告，不能跨模型直接比较；128 个生成词和 128 个 Qwen 子词也不是相同长度预算。Qwen 的大规模预训练知识和模型规模都会影响结果，不能把差异全部归因于架构。Qwen 的 BERTScore/推理资源评测和完整 MMLU 医学子集已完成；人工答案审查仍待完成。
 
 ## 数据是什么样的
 
@@ -87,16 +87,33 @@ Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。
 
   上述结果的 normalized exact match 都为 0，且没有空回答。CPT 的 Token F1 低于同次 Base，ROUGE-L 略高；CPT+SFT 在这两个 200 题样本里的两项文字重合指标都高于同次 Base。这是初步结果，不证明医学回答正确。两次测试运行使用同一文件哈希、seed 和生成设置，但 Base 指标略有波动，因此应按每次运行内部的配对值解读，不要把不同运行的 Base 分数当成完全相同的基线。逐题回答和 JSON 汇总分别保存在服务器 `runs/qa_eval_*` 目录，不纳入 Git。
 
-- 上表保留现有 QA 结果。新的配对评测脚本还会记录模型加载时间、单题延迟（中位数和 P95）、生成 token/秒、峰值显存 allocated/reserved，以及模型目录文件大小；可选计算 BERTScore F1。此轮评测尚未运行，因此这些字段没有结果。比较时需固定同一 RTX 4090、200 道测试题、提示词和生成设置；延迟预热题不计入统计。BERTScore 只能补充语义相似度，仍不代表医学正确性。
+- 上表中的 QA 是早期逐次运行对比。最终报告以以下新结果表为准：Base/CPT+SFT 指标和推理资源来自 `runs/qa_eval_cpt_sft_test_200_infra/`；CPT-only 来自较早的 `runs/qa_eval_cpt_test_200/`；LSTM BERTScore 后续使用同一 RoBERTa 评分设置补算。旧 LSTM 对比中缓存的 Qwen 指标与最终 Base 运行不同，只作历史记录。文字和语义相似度仍不代表医学正确性。
 - 最终 LSTM 训练使用 8,094,240 个参数、20,000 词词表、embedding 128、hidden size 256、sequence length 512、batch size 8、Adam 学习率 1e-3、Dropout 0.2、early-stopping patience 2，环境为 TensorFlow 2.21.0/Keras 3.15.1。最多训练 50 轮，实际完成 16 轮；验证 loss 最低的 checkpoint 是第 14 轮。训练、验证和保存共耗时 1,778.20 秒（约 29 分 38 秒）。该 checkpoint 的验证 loss 为 2.9958、token accuracy 为 0.5110，按有效目标词计算的 NLL 为 2.9100、word perplexity 为 18.356。词级 perplexity 不能与 Qwen 子词指标直接比较。
 - LSTM 训练中有 657/12,799 条（5.13%）文本被截断，验证中为 102/1,471 条（6.93%）；未知词比例分别为 2.20% 和 3.62%。保存的完整 `model.keras` 为 97,164,406 字节（约 97.2 MB），包含训练用优化器状态；仅按 FP32 参数计算的权重约 32.4 MB，两者不能混作部署权重大小。
-- LSTM 测试结果保存在服务器 `runs/qa_eval_lstm_16epoch_test_200/`，复用的 Qwen 预测 SHA-256 为 `4ded3d20295a041d965cf6f74ad63c6b8fa6870aef3c4762ac30dda8080a14d3`。同一批 200 题上，LSTM 的 Token F1 为 0.2525、ROUGE-L 为 0.2067；Base 为 0.2586、0.1600；CPT+SFT 为 0.3248、0.2622。三者 exact match 均为 0，且没有空回答。LSTM 平均每题耗时 0.1242 秒，平均生成 86.115 个空格分词的单词。Qwen 的推理资源测量仍待完成；LSTM 的 128 个词与 Qwen 的 128 个子词不是相同长度预算，token 速度不能直接横向比较。
+- 旧 LSTM 对比复用了另一次 Qwen 运行的预测，其 Base 指标与最终 Infra 运行不同，保留作历史参考。最终 LSTM 指标使用相同的 200 道题和参考答案；BERTScore 也已补算。LSTM 平均每题耗时 0.1242 秒，平均生成 86.115 个词；它的 128 词上限与 Qwen 的 128 子词上限不同，不能直接比较生成速度。
 - 测试集共有 1,573 条记录，目前只评了按 seed 5565 抽取的 200 条；全量测试尚未运行。MedQuAD 是公开数据，但与训练数据来自同一数据集体系。
-- 另准备了 MMLU `professional_medicine` 的完整 272 道 test 题和 5 道 dev 提示示例，用来报告 5-shot 四选一准确率。数据来自 `cais/mmlu`，固定 revision 为 `c30699e8356da336a370243923dbaf21066bb9fe`。`evaluate_mmlu.py` 直接比较四个答案 token 的概率；test 答案不进入提示，不用于训练。当前仅完成数据、提示词与 tokenizer 检查，GPU 评测尚未运行。报告必须标明单科目与 5-shot 协议；这是医学考试评测，不是完整 MMLU 分数，也不能证明患者问答质量或公开题目未进入预训练数据。[MMLU 数据与原始实现](https://github.com/hendrycks/test)
-- `runqi/sft-work` 是当前课程主线工作分支，覆盖 CPT、SFT 和必做的 LSTM 对照。`main` 暂为 CPT 基线，基线标签为 `cpt-baseline-2026-09-28`；待公开 benchmark 和最终报告记录完成后，通过一个 PR 合入课程主线。
+- MMLU `professional_medicine` 完整 272 题已使用 5-shot 提示完成评测。脚本从下一 token 概率中选择 A/B/C/D；test 标签不进入提示或训练。它是单科目考试评测，不是完整 MMLU 分数，也不证明患者问答质量；公开题目可能出现在预训练数据中。[MMLU 数据与原始实现](https://github.com/hendrycks/test)
+- `runqi/sft-work` 是当前课程主线工作分支，覆盖 CPT、SFT 和必做的 LSTM 对照。`main` 暂为 CPT 基线，基线标签为 `cpt-baseline-2026-09-28`；公开 MMLU 评测已完成。完成 Word 报告和其他课程交付物后，再检查当前分支与远端状态，通过 PR 合入课程主线。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 
 如果之后尝试 DPO 或 GRPO，二者都从同一个 SFT 检查点独立分支。开始前要确定偏好数据、奖励规则和评测集；不能只凭奖励分数上涨就断定回答质量提高。若工具链或数据来不及确认，完成 Base→CPT→SFT 主线即可。
+
+## 最终留出集结果（更新于 2026-10-07）
+
+最终 QA 对比使用清理后 1,573 道测试题中按 seed 5565 抽取的 200 题。Base/CPT+SFT 数据来自 Infra 运行；CPT 和 LSTM 指标来自各自保存的评测；LSTM BERTScore 后来用相同 RoBERTa 设置补算。
+
+| 模型 | Normalized EM | Token F1 | ROUGE-L F1 | BERTScore F1 |
+|---|---:|---:|---:|---:|
+| Base | 0 | 0.2540 | 0.1582 | 0.8378 |
+| CPT | 0 | 0.2332 | 0.1638 | 未测量 |
+| CPT+SFT | 0 | 0.3269 | 0.2646 | 0.8611 |
+| LSTM | 0 | 0.2525 | 0.2067 | 0.8253 |
+
+四个模型均无空回答。CPT-only 指标变化不一致；完整 CPT+SFT 流程在三项已测相似度指标上高于 Base。由于没有 SFT-only 对照，无法单独衡量 CPT 的贡献。相似度指标不代表医学正确性。
+
+MMLU `professional_medicine` 完整科目使用 5-shot 提示：Base 为 165/272（60.66%），CPT+SFT 为 170/272（62.50%）。两者同对 149 题，只有 CPT+SFT 对 21 题，只有 Base 对 16 题，两者都错 86 题。单次、单科目净增 5 题。
+
+Infra 运行使用 RTX 4090，batch size 1，每个模型预热 3 题。Base/CPT+SFT 平均延迟为 3.5803/3.3414 秒，P95 为 3.6273/3.6378 秒，生成速度为 35.5645/35.6234 tokens/s，峰值已分配显存为 4252.70/4253.08 MiB。CPT+SFT 平均输出更短（119.00 对 127.29 token ID），因此平均延迟不能单独说明提速。LSTM 以词计长度，延迟口径不能与 Qwen 直接比较。
 
 ## 推荐阅读
 

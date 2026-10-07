@@ -18,7 +18,7 @@
     git switch runqi/sft-work
     git pull --ff-only
 
-CPT/SFT 和最终 16 轮 LSTM 检查点已完成相同 200 道测试题的对比。剩余工作是完成 Qwen 的 BERTScore/推理资源评测、公开 MMLU、人工抽查和最终报告；结果记录完成后，再通过一个 PR 将课程主线合并到 `main`。蒸馏、DPO 和 GRPO 不属于核心报告范围。
+最终自动评测已记录：Base、CPT、CPT+SFT 和 LSTM 使用同一批固定种子的 200 道 QA 测试题；最新 Infra 评测包含 BERTScore 和 Qwen 推理资源；完整的 MMLU professional_medicine 272 题也已完成。1,573 道 QA 测试题尚未全量评测，人工抽查仍待完成。当前报告是 LaTeX 初稿；课程要求 Word 报告，可解释性、交叉验证、部署说明、10 分钟展示视频及团队调查等交付项也要跟进。详见[提交清单](docs/SUBMISSION_CHECKLIST.md)。DPO、GRPO 尚未实现。
 
 TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>`；Qwen 图文检查和问答评测仍在已有 PyTorch/Transformers 环境运行 `python src/healthcpt/...`。旧的 `cpt-pilot` 和 LSTM 模块命令继续可用。
 
@@ -356,9 +356,11 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
       --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
       --output-dir runs/mmlu_professional_medicine_5shot
 
-脚本比较下一 token 为 ` A`、` B`、` C`、` D` 的概率，取最高者计分；不生成长答案，也不调用付费评分模型。两模型使用相同的 272 道题和 5 个 dev 示例，test 答案不进入提示词。`metrics.json` 保存 accuracy、正确题数、两模型的逐题配对统计和运行设置；逐题预测另存 JSONL。当前数据下载、提示词及 tokenizer 检查已通过，服务器 GPU 评分待运行。预训练模型可能已接触过公开题目，因此这项分数也不证明临床安全或完全无数据重叠。
+MMLU 完整科目的 GPU 评测已完成：脚本比较 ` A`、` B`、` C`、` D` 四个答案 token 的下一 token 概率，不生成长答案。两模型使用同一组 272 道 test 题和 5 个 dev 示例；test 答案不进入提示词。`runs/mmlu_professional_medicine_5shot/` 保存 accuracy、正确题数、逐题配对结果及设置。报告应标明 `professional_medicine` 和 5-shot 协议；它不是完整 MMLU 总分，也不是临床安全评估。公开题目可能出现在预训练数据中。
 
 ## 仓库里有什么
+当前课程交付物和待办见[提交清单](docs/SUBMISSION_CHECKLIST.md)。Overleaf 源文件保存在本机的 `docs/final-report/`，该目录已加入 Git 忽略；已执行的课程 notebook 在根目录 `Final_Project.ipynb`。Overleaf ZIP 只是报告源文件包，不是完整的课程提交压缩包。
+
 
 - data/：原始来源和处理后的数据，不纳入 Git。
 - models/：下载的模型缓存，不纳入 Git。
@@ -376,7 +378,7 @@ Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
 | Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py`、`evaluate_mmlu.py` |
 | 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
-Qwen3.5-2B 的 CPT 和 SFT 训练均已完成。CPT 的 Hugging Face 导出通过了基础的 Transformers 图文检查；SFT 导出已加载并用于问答评测。最终 16 轮 LSTM 训练及同一批 200 道测试题的对比已经记录。Qwen 的 BERTScore/推理资源评测、公开 MMLU 和人工回答审查仍待完成；MedQuAD 的 1,573 道测试题尚未全量运行。训练参数、指标和限制见[研究概览](docs/research/README.md)。DPO、GRPO 不属于核心范围，也未实现。
+CPT、SFT 和 LSTM 基线均已训练。最终 QA 对比、LSTM BERTScore、Qwen 推理资源指标及 MMLU professional_medicine 完整科目结果已保存在 `runs/`。最新 Base/CPT+SFT 指标以 `qa_eval_cpt_sft_test_200_infra` 为准；CPT-only 旧评测保留用于阶段分析。QA 只评测了 1,573 题中的 200 题，人工答案审查仍未完成。目前的报告为 LaTeX 初稿，另有课程交付项待完成。详见[研究概览](docs/research/README.md)、[提交清单](docs/SUBMISSION_CHECKLIST.md)。
 
 ## 15. 一键展示最终评测结果
 
@@ -398,3 +400,15 @@ CPT、SFT 的 loss/accuracy 曲线读取 TensorBoard 训练采样点，缓存为
     python src/healthcpt/score_lstm_bertscore.py
 
 脚本核对已有 200 条回答与最终 Qwen 的题目、参考答案，并要求 BERTScore、Transformers 版本一致。新结果存入 `runs/qa_eval_lstm_16epoch_test_200_bertscore/`，包含 `metrics.json` 和 `predictions.jsonl`，原结果保持不变。下载这个目录到本地，再运行展示页脚本即可显示新增分数。评分只需要 RoBERTa，不加载 Qwen 或 LSTM 权重。
+
+## 16. 课程提交 Notebook
+
+仓库根目录的 `Final_Project.ipynb` 是代码与实验结果的提交入口，已保存执行后的表格与图。内容包括数据准备、真实实现片段、训练和评测入口、指标重算及来源核对，说明采用简短英文。它与源码模块、最终 Word 报告一起使用。
+
+若要重新执行轻量分析，在 Python 3.11 或 3.12 环境安装：
+
+    python -m pip install -r requirements-notebook.txt
+
+在 notebook 编辑器中选择该 Python 内核，再 Run All。需要本地 `data/processed/` 数据，以及 `runs/` 中已下载的评测、训练记录、`training_curves.json` 和 LSTM 词表。默认只读取文件、重算指标和画图，不训练、不推理、不下载模型，也不需要 TensorFlow/PyTorch。没有这些文件时，仍可直接阅读 notebook 已保存的输出。
+
+`RUN_DATA_PREPARATION`、`RUN_TRAINING`、`RUN_EXPORT`、`RUN_INFERENCE`、`RUN_BERTSCORE` 均默认关闭。重跑前按上文准备对应环境，再开启所需操作；输出写入 `runs/notebook_reproduction/`。提交 notebook 时同时附上源码、环境文件及必要结果文件，模型权重可以另行保存。执行 notebook 不代表已完成人工答案评审、专门的可解释性分析或团队最终解释。

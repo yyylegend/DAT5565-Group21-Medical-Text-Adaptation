@@ -4,7 +4,7 @@ Status updated: October 8, 2026. This checklist separates items present in the r
 
 ## Git and folder status
 
-The course implementation, EOS evaluator fix, tests, executed notebook, and current evaluation documentation are maintained on `runqi/sft-work`. Branch integration into `main` is handled through a separate pull request. `docs/final-report/` is Git-ignored at the user’s request and remains on this computer. `docs/report-notes-memo.md` is also ignored and private. `data/`, `models/`, and `runs/` are ignored local data and run artifacts. The Overleaf ZIP is a report-source package, not the full course-submission ZIP.
+The course implementation, EOS evaluator fix, tests, executed notebook, and current evaluation documentation are integrated into `main` through PR #1. `runqi/sft-work` remains available for existing server checkouts. `docs/final-report/` is Git-ignored at the user’s request and remains on this computer. `docs/report-notes-memo.md` is also ignored and private. `data/`, `models/`, and `runs/` are ignored local data and run artifacts. The Overleaf ZIP is a report-source package, not the full course-submission ZIP.
 
 ## In the project
 

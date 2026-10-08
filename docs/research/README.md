@@ -93,7 +93,7 @@ Base、CPT 和 CPT+SFT 评测使用相同的抽样问题和 Q/A 提示词。当�
 - 旧 LSTM 对比复用了另一次 Qwen 运行的预测，其 Base 指标与最终 Infra 运行不同，保留作历史参考。最终 LSTM 指标使用相同的 200 道题和参考答案；BERTScore 也已补算。LSTM 平均每题耗时 0.1242 秒，平均生成 86.115 个词；它的 128 词上限与 Qwen 的 128 子词上限不同，不能直接比较生成速度。
 - 测试集共有 1,573 条记录，目前只评了按 seed 5565 抽取的 200 条；全量测试尚未运行。MedQuAD 是公开数据，但与训练数据来自同一数据集体系。
 - MMLU `professional_medicine` 完整 272 题已使用 5-shot 提示完成评测。脚本从下一 token 概率中选择 A/B/C/D；test 标签不进入提示或训练。它是单科目考试评测，不是完整 MMLU 分数，也不证明患者问答质量；公开题目可能出现在预训练数据中。[MMLU 数据与原始实现](https://github.com/hendrycks/test)
-- `runqi/sft-work` 是当前课程主线工作分支，覆盖 CPT、SFT 和必做的 LSTM 对照。`main` 暂为 CPT 基线，基线标签为 `cpt-baseline-2026-09-28`；公开 MMLU 评测已完成。完成 Word 报告和其他课程交付物后，再检查当前分支与远端状态，通过 PR 合入课程主线。
+- `main` 是已整合的课程主线，包含 CPT、SFT、LSTM 基线和评测。`runqi/sft-work` 保留给已有服务器 checkout；原 CPT 基线仍可通过标签 `cpt-baseline-2026-09-28` 访问。其余课程交付项见提交清单。
 - 训练目标环境是 Linux GPU 服务器，依赖由 `uv` 管理；本机不需要启动 WSL 来准备或检查数据。
 
 如果之后尝试 DPO 或 GRPO，二者都从同一个 SFT 检查点独立分支。开始前要确定偏好数据、奖励规则和评测集；不能只凭奖励分数上涨就断定回答质量提高。若工具链或数据来不及确认，完成 Base→CPT→SFT 主线即可。

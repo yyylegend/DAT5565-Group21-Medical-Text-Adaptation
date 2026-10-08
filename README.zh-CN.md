@@ -8,14 +8,14 @@
 
 | 名称 | 用途 |
 |---|---|
-| `main` | 已完成 CPT 的稳定基线；暂时不包含 SFT/LSTM 工作。 |
-| `runqi/sft-work` | 当前课程项目工作分支，包含 CPT、SFT、LSTM、导出与评测。名字沿用已有服务器配置。 |
+| `main` | 课程项目主线，包含 CPT、SFT、LSTM、导出、评测和已执行的 Notebook。 |
+| `runqi/sft-work` | 保留给服务器已有 checkout 的开发分支；后续新工作从 `main` 开始。 |
 | `cpt-baseline-2026-09-28` | 固定在 `5800729` 的 CPT 基线标签，方便未来更新 `main` 后仍能回到这个版本。 |
 
-下面的安装指引克隆当前工作分支。已在服务器克隆过仓库，则先执行：
+下面的安装指引克隆 `main`。已有 checkout 的工作区干净时，可执行以下命令切换到课程主线：
 
     git fetch origin
-    git switch runqi/sft-work
+    git switch main
     git pull --ff-only
 
 最终自动评测已记录：Base、CPT、CPT+SFT 和 LSTM 使用同一批固定种子的 200 道 QA 测试题；完整的 MMLU professional_medicine 272 题也已完成。Base/CPT+SFT 的 EOS 修正版在 `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`，使用 RTX 2080 Ti；早期 RTX 4090 Infra 运行保留作历史记录。EOS 修正后，部分回答仍重复并达到 128-token 上限。1,573 道 QA 测试题尚未全量评测，人工抽查仍待完成。报告已按提交稿修订并在本地编译为 PDF；课程要求 Word 报告，可解释性、交叉验证、部署说明、10 分钟展示视频及团队调查等交付项也要跟进。详见[提交清单](docs/SUBMISSION_CHECKLIST.md)。DPO、GRPO 尚未实现。
@@ -60,7 +60,7 @@ TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>
 先在云平台确认持久磁盘的挂载路径。不同服务器的路径不同。把下面第一行替换成你的实际路径：
 
     cd /path/to/your/persistent-disk
-    git clone --branch runqi/sft-work https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
+    git clone --branch main https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
     cd DAT5565-Group21-Medical-Text-Adaptation
     uv sync --locked --python 3.12
     uv run python --version

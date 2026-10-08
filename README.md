@@ -8,14 +8,14 @@ This README walks through the project from a new Linux GPU server to CPT, SFT, a
 
 | Name | Purpose |
 |---|---|
-| `main` | Stable completed CPT baseline; SFT/LSTM work has not been merged. |
-| `runqi/sft-work` | Active course-project branch covering CPT, SFT, LSTM, export, and evaluation. Its existing name is retained for server checkouts. |
+| `main` | Course-project mainline: CPT, SFT, LSTM, export, evaluation, and the executed notebook. |
+| `runqi/sft-work` | Retained development branch for existing server checkouts; new work starts from `main`. |
 | `cpt-baseline-2026-09-28` | CPT baseline tag fixed at `5800729`, so it remains accessible after future updates to `main`. |
 
-The installation instructions below clone the active work branch. For an existing checkout:
+The installation instructions below clone `main`. To move an existing clean checkout to the course mainline:
 
     git fetch origin
-    git switch runqi/sft-work
+    git switch main
     git pull --ff-only
 
 The final test evaluations are recorded: Base, CPT, CPT+SFT, and LSTM were compared on the same seeded sample of 200 QA questions, and the full 272-question MMLU professional_medicine subject was scored. A corrected-stop Base/CPT+SFT rerun is in `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`; the earlier RTX 4090 Infra run is retained as historical. The full 1,573-question QA test set and systematic human answer review remain outstanding. Some CPT+SFT answers still repeat and reach the 128-token cap after the EOS correction. The report manuscript has been revised for final submission review and compiled locally to PDF; the course requires a Word report, and the required explainability work, cross-validation plan, deployment documentation, presentation, and collaboration survey still need attention. See the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The LaTeX report source is kept locally in Git-ignored `docs/final-report/`. DPO and GRPO were not implemented.
@@ -60,7 +60,7 @@ If sudo is not installed and your prompt is root, that is normal: omit sudo. The
 Find the persistent-disk mount path in your cloud provider. It varies by server. Replace the first path below with that mount point:
 
     cd /path/to/your/persistent-disk
-    git clone --branch runqi/sft-work https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
+    git clone --branch main https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
     cd DAT5565-Group21-Medical-Text-Adaptation
     uv sync --locked --python 3.12
     uv run python --version

@@ -34,7 +34,9 @@ def main() -> None:
     corpus_parser.add_argument("output_dir", type=Path, help="New output folder, usually data/processed/cpt-medical-v3")
     corpus_parser.add_argument("--medquad-cpt-limit", type=int, default=6000)
     corpus_parser.add_argument("--chunk-words", type=int, default=200)
-    cpt_parser = commands.add_parser("cpt-pilot", help="Run GPU continued pretraining")
+    cpt_parser = commands.add_parser(
+        "cpt-train", aliases=["cpt-pilot"], help="Run CPT; small limits make a pilot"
+    )
     cpt_parser.add_argument("train_path", type=Path)
     cpt_parser.add_argument("validation_path", type=Path)
     cpt_parser.add_argument("output_dir", type=Path)
@@ -49,13 +51,33 @@ def main() -> None:
     cpt_parser.add_argument("--warmup-ratio", type=float, default=0.05)
     cpt_parser.add_argument("--minimum-learning-rate-ratio", type=float, default=0.1)
     cpt_parser.add_argument("--checkpoint-steps", type=int, default=2000)
+    sft_parser = commands.add_parser(
+        "sft-train", help="Continue a completed CPT LoRA run with QA examples"
+    )
+    sft_parser.add_argument("cpt_run_dir", type=Path, help="Completed CPT run folder")
+    sft_parser.add_argument("train_path", type=Path, help="MedQuAD QA training JSONL")
+    sft_parser.add_argument("validation_path", type=Path, help="Clean QA validation JSONL")
+    sft_parser.add_argument("output_dir", type=Path, help="New folder for SFT outputs")
+    sft_parser.add_argument("--limit-train", type=int, default=128)
+    sft_parser.add_argument("--limit-validation", type=int, default=32)
+    sft_parser.add_argument("--sequence-length", type=int, default=512)
+    sft_parser.add_argument("--batch-size", type=int, default=1)
+    sft_parser.add_argument("--learning-rate", type=float, default=2e-5)
+    sft_parser.add_argument("--warmup-ratio", type=float, default=0.05)
+    sft_parser.add_argument("--minimum-learning-rate-ratio", type=float, default=0.1)
+    sft_parser.add_argument("--checkpoint-steps", type=int, default=1000)
+    # Importing the LSTM argument helpers does not load TensorFlow.
+    from .lstm_baseline import add_training_arguments, add_evaluation_arguments
+
+    add_training_arguments(commands.add_parser("lstm-train", help="Train the foundational LSTM baseline"))
+    add_evaluation_arguments(commands.add_parser("lstm-evaluate", help="Evaluate LSTM and reuse cached Qwen answers"))
     export_parser = commands.add_parser(
-        "export-hf", help="Merge CPT text updates into a full Qwen3.5 multimodal model"
+        "export-hf", help="Merge a trained adapter into the original full Qwen3.5 model"
     )
     export_parser.add_argument(
         "run_dir",
         type=Path,
-        help="Completed CPT run folder containing run.json and the LoRA adapter",
+        help="Completed training run folder containing run.json and the LoRA adapter",
     )
     export_parser.add_argument(
         "--base-dir",
@@ -94,7 +116,7 @@ def main() -> None:
             medquad_cpt_limit=args.medquad_cpt_limit,
             chunk_words=args.chunk_words,
         )
-    elif args.command == "cpt-pilot":
+    elif args.command in ("cpt-train", "cpt-pilot"):
         from .cpt import train
 
         result = train(
@@ -113,6 +135,33 @@ def main() -> None:
             minimum_learning_rate_ratio=args.minimum_learning_rate_ratio,
             checkpoint_steps=args.checkpoint_steps,
         )
+    elif args.command == "sft-train":
+        from .sft import train
+
+        result = train(
+            cpt_run_dir=args.cpt_run_dir,
+            train_path=args.train_path,
+            validation_path=args.validation_path,
+            output_dir=args.output_dir,
+            limit_train=args.limit_train,
+            limit_validation=args.limit_validation,
+            sequence_length=args.sequence_length,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            warmup_ratio=args.warmup_ratio,
+            minimum_learning_rate_ratio=args.minimum_learning_rate_ratio,
+            checkpoint_steps=args.checkpoint_steps,
+        )
+    elif args.command == "lstm-train":
+        from .lstm_baseline import train
+
+        train(args)
+        return
+    elif args.command == "lstm-evaluate":
+        from .lstm_baseline import evaluate
+
+        evaluate(args)
+        return
     else:
         from .export_hf import export_hf
 

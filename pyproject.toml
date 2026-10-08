@@ -1,7 +1,7 @@
 [project]
 name = "dat5565-healthcpt"
 version = "0.1.0"
-description = "Reproducible medical-domain continued pretraining pilot for DAT5565"
+description = "TensorFlow medical QA adaptation with CPT, SFT, and an LSTM baseline"
 requires-python = ">=3.11,<3.13"
 dependencies = [
   "tensorflow[and-cuda]>=2.18,<2.22; sys_platform == 'linux'",

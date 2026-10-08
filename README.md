@@ -2,7 +2,25 @@
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 
-This README walks through the project from a new Linux GPU server to a running CPT job. Run these commands in an SSH terminal connected to the server, not in Windows PowerShell. The project plan and data decisions are in the [research overview](docs/research/README.en.md).
+This README walks through the project from a new Linux GPU server to CPT, SFT, and foundational LSTM experiments. Run these commands in an SSH terminal connected to the server, not in Windows PowerShell. The project plan and data decisions are in the [research overview](docs/research/README.en.md).
+
+## Which branch to use
+
+| Name | Purpose |
+|---|---|
+| `main` | Course-project mainline: CPT, SFT, LSTM, export, evaluation, and the executed notebook. |
+| `runqi/sft-work` | Retained development branch for existing server checkouts; new work starts from `main`. |
+| `cpt-baseline-2026-09-28` | CPT baseline tag fixed at `5800729`, so it remains accessible after future updates to `main`. |
+
+The installation instructions below clone `main`. To move an existing clean checkout to the course mainline:
+
+    git fetch origin
+    git switch main
+    git pull --ff-only
+
+The final test evaluations are recorded: Base, CPT, CPT+SFT, and LSTM were compared on the same seeded sample of 200 QA questions, and the full 272-question MMLU professional_medicine subject was scored. A corrected-stop Base/CPT+SFT rerun is in `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`; the earlier RTX 4090 Infra run is retained as historical. The full 1,573-question QA test set and systematic human answer review remain outstanding. Some CPT+SFT answers still repeat and reach the 128-token cap after the EOS correction. The report manuscript has been revised for final submission review and compiled locally to PDF; the course requires a Word report, and the required explainability work, cross-validation plan, deployment documentation, presentation, and collaboration survey still need attention. See the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The LaTeX report source is kept locally in Git-ignored `docs/final-report/`. DPO and GRPO were not implemented.
+
+TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 
 ## 1. What you need
 
@@ -42,7 +60,7 @@ If sudo is not installed and your prompt is root, that is normal: omit sudo. The
 Find the persistent-disk mount path in your cloud provider. It varies by server. Replace the first path below with that mount point:
 
     cd /path/to/your/persistent-disk
-    git clone https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
+    git clone --branch main https://github.com/yyylegend/DAT5565-Group21-Medical-Text-Adaptation.git
     cd DAT5565-Group21-Medical-Text-Adaptation
     uv sync --locked --python 3.12
     uv run python --version
@@ -62,9 +80,14 @@ For later QA evaluation, also upload:
     data/processed/cpt-medical-v3/qa_test_eval.jsonl
     data/processed/cpt-medical-v3/manifest.json
 
+SFT and LSTM training also require:
+
+    data/processed/medquad-v1/qa_train.jsonl
+    data/processed/medquad-v1/manifest.json
+
 Create the destination folder before transferring files:
 
-    mkdir -p data/processed/cpt-medical-v3
+    mkdir -p data/processed/cpt-medical-v3 data/processed/medquad-v1
 
 You can use your provider's file browser or scp. Keep the file names and folder structure shown above. The current CPT files contain 24,240 training text chunks and 1,645 validation chunks.
 
@@ -123,7 +146,7 @@ You are now inside tmux. Set the model cache in this shell before the first mode
 
 This short run checks model loading, GPU access, and adapter saving before the full dataset run:
 
-    uv run healthcpt cpt-pilot \
+    uv run healthcpt cpt-train \
       data/processed/cpt-medical-v3/cpt_train.jsonl \
       data/processed/cpt-medical-v3/cpt_validation.jsonl \
       runs/qwen3_5_2b_cpt_pilot \
@@ -133,7 +156,7 @@ This short run checks model loading, GPU access, and adapter saving before the f
 
 ### Full CPT run
 
-    uv run healthcpt cpt-pilot \
+    uv run healthcpt cpt-train \
       data/processed/cpt-medical-v3/cpt_train.jsonl \
       data/processed/cpt-medical-v3/cpt_validation.jsonl \
       runs/qwen3_5_2b_cpt_full_1epoch \
@@ -232,15 +255,160 @@ The optional evaluator compares the Base model with one trained model on the sam
       --output-dir runs/qa_eval_cpt_validation_pilot \
       --limit 50
 
-Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to predictions.jsonl and summary metrics to metrics.json. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually, and keep the test set for the final Base-versus-SFT comparison. Choose a new, empty output folder for each run.
+Both models receive the same `Question: ...\nAnswer:` prompt and greedy decoding settings. Remove `--limit 50` to compare all validation questions. The script writes per-question answers to `predictions.jsonl` and summary metrics to `metrics.json`. It reports normalized exact match, token F1, and ROUGE-L. These compare text overlap with reference answers; they do not establish medical correctness. Review answers manually. Validation is for development comparisons; a seeded 200-question test sample has already been used to compare Base, CPT, and CPT+SFT, while the full 1,573-row test file remains unevaluated. See the [research overview](docs/research/README.en.md) for those results and limits. Choose a new, empty output folder for each run.
+
+For a final Base-versus-CPT+SFT run on the same 200 test questions, the script also records model loading time, per-question latency, output tokens per second, GPU memory peaks, and model-folder size. Add `--bertscore` to include BERTScore F1. Install `bert-score` in the active PyTorch evaluation environment first; it downloads the `roberta-large` scoring model (about 1.4 GB). The BERTScore model is loaded only after Qwen inference, so its memory is excluded from Qwen's GPU memory measurements.
+
+    python -m pip install bert-score
+
+    python src/healthcpt/evaluate_qa.py \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
+      --candidate-name CPT+SFT \
+      --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
+      --output-dir runs/qa_eval_cpt_sft_test_200_eosfix_wsl \
+      --limit 200 --seed 5565 --max-new-tokens 128 \
+      --warmup-questions 3 --bertscore
+
+The evaluator stops on both the tokenizer EOS ID and Qwen3.5's `<|im_end|>` assistant-turn marker. The corrected WSL rerun is saved under `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`. The latency summary excludes model loading and includes prompt tokenization, generation, and decoding. Output-token throughput measures generation only. GPU memory is measured with PyTorch's CUDA allocator; use `nvidia-smi` as a separate check of total device use. Keep the same GPU, model files, sample, and generation settings when comparing results. Before the full run, try the command with `--limit 5` and a different output folder to confirm BERTScore loads in the current Transformers environment.
+
+## 11. Run SFT
+
+SFT continues from a completed CPT run. It reloads the same Base model and CPT LoRA adapter, then trains on MedQuAD question-answer pairs. Start with a small pilot to check the software setup and GPU memory:
+
+    uv run healthcpt sft-train \
+      runs/qwen3_5_2b_cpt_full_1epoch \
+      data/processed/medquad-v1/qa_train.jsonl \
+      data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      runs/qwen3_5_2b_sft_pilot \
+      --limit-train 128 --limit-validation 32 \
+      --sequence-length 512 --batch-size 1 --learning-rate 2e-5
+
+If the pilot runs correctly, train for one epoch on all 12,799 training pairs and 1,471 validation pairs:
+
+    uv run healthcpt sft-train \
+      runs/qwen3_5_2b_cpt_full_1epoch \
+      data/processed/medquad-v1/qa_train.jsonl \
+      data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      runs/qwen3_5_2b_sft_full_1epoch \
+      --limit-train 12799 --limit-validation 1471 \
+      --sequence-length 512 --batch-size 1 \
+      --learning-rate 2e-5 --warmup-ratio 0.05 \
+      --minimum-learning-rate-ratio 0.1 --checkpoint-steps 1000
+
+The progress bar shows steps, ETA, loss, and token accuracy. TensorBoard logs go to `tensorboard/` inside the run folder. After an interruption, rerun the exact same command with the same folder to resume from the latest checkpoint. Each input is the full `Question: ...\nAnswer: ...` text, and KerasHub calculates next-token loss on all non-padding question and answer tokens. The sequence length is fixed at 512, so long examples are truncated and should be considered when interpreting results.
+
+After training, `sft_adapter.lora.h5` contains the continued CPT+SFT LoRA updates; `run.json` and `training_config.json` record the run. The adapter is not a standalone model. Export the full Hugging Face multimodal model using the same Base snapshot as CPT:
+
+    uv run healthcpt export-hf runs/qwen3_5_2b_sft_full_1epoch \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --output-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal
+
+The export folder contains the Hugging Face configuration, tokenizer/processor files, and Safetensors weights; vision-related weights are copied from the original Base model. The training adapter is `.h5`; the complete export uses Safetensors. Then run `evaluate_qa.py` with `--candidate-dir` pointing to this `hf_export_multimodal` folder and `qa_test_eval.jsonl` for the final Base-versus-CPT+SFT comparison.
+
+## 12. Required foundational LSTM baseline
+
+The instructor approved at least 10,000 medical text records or QA pairs and requires primary TensorFlow/Keras experiments with a foundational architecture baseline. `lstm_baseline.py` trains `Embedding → forward LSTM → Dense` from scratch on the same QA training split as SFT. Its vocabulary is learned only from training data: up to 20,000 words, embedding dimension 128, and hidden size 256, totaling about 8.1 million parameters at the vocabulary limit. It can generate answers; it is not expected to match the knowledge or fluency of a pretrained SLM.
+
+Start with a pilot inside tmux:
+
+    uv run healthcpt lstm-train \
+      --train-file data/processed/medquad-v1/qa_train.jsonl \
+      --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/lstm_qa_pilot \
+      --limit-train 128 --limit-validation 32 --epochs 1
+
+The final run used all pairs, a 50-epoch cap, and validation-loss early stopping (patience 2):
+
+    uv run healthcpt lstm-train \
+      --train-file data/processed/medquad-v1/qa_train.jsonl \
+      --validation-file data/processed/cpt-medical-v3/qa_validation_eval.jsonl \
+      --output-dir runs/lstm_qa_50epochs \
+      --vocab-size 20000 --embedding-dim 128 --hidden-size 256 \
+      --sequence-length 512 --batch-size 8 --epochs 50 --learning-rate 1e-3
+
+This run stopped after 16 epochs; epoch 14 was selected by validation loss. The best model (`model.keras`) and latest model (`latest.keras`) are saved after epochs, alongside the vocabulary, settings, loss curves, and data-quality statistics. There is no step-resume command for this baseline; keep the tmux session and server running. These are Keras models, not Hugging Face Safetensors.
+
+Evaluate the same 200 test questions and reuse the saved Qwen answers:
+
+    uv run healthcpt lstm-evaluate \
+      --model-dir runs/lstm_qa_50epochs \
+      --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
+      --output-dir runs/qa_eval_lstm_16epoch_test_200 --limit 200 --seed 5565 \
+      --cached-qwen-predictions runs/qa_eval_cpt_sft_test_200/predictions.jsonl
+
+The script verifies question, reference, source-line, and data-hash alignment before computing the same text-overlap metrics for LSTM, Base, and CPT+SFT. LSTM uses a 128-word generation cap while Qwen uses 128 subword tokens; these are not equivalent budgets. The comparison also reflects model size and pretraining exposure, not architecture alone.
+
+## 13. Automatic accuracy on a public benchmark
+
+The additional benchmark is the complete `professional_medicine` subject from [MMLU](https://github.com/hendrycks/test): 272 four-choice test questions with five dev questions as prompt demonstrations. Report **MMLU professional_medicine, 5-shot accuracy**, not the full MMLU aggregate score. It measures medical exam knowledge and supplements the existing MedQuAD held-out text-overlap evaluation.
+
+Prepare only this subject in the existing PyTorch/Transformers inference environment, with no additional dataset library:
+
+    python src/healthcpt/evaluate_mmlu.py prepare
+
+The source is `cais/mmlu`. The script verifies a fixed dataset revision and row counts and saves dev/test JSONL plus a hash manifest. It does not download the full MMLU collection. Alternatively, transfer the prepared `data/processed/mmlu-professional-medicine/` directory to the server.
+
+For an execution pilot, add `--limit 10` and choose another output folder. Run the full evaluation inside tmux:
+
+    python src/healthcpt/evaluate_mmlu.py evaluate \
+      --base-dir models/huggingface/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c \
+      --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
+      --output-dir runs/mmlu_professional_medicine_5shot
+
+The recorded full-subject run compares the highest next-token probabilities for ` A`, ` B`, ` C`, and ` D`; it does not generate long answers. Both models received the same 272 questions and five dev demonstrations, and test labels were not included in prompts. Results and per-question predictions are in `runs/mmlu_professional_medicine_5shot/`. The report should call this “MMLU professional_medicine, 5-shot accuracy,” not the full MMLU score. It measures exam questions, not clinical safety; public benchmark items may also have appeared in pretraining.
 
 ## Project files
+Current course deliverables and remaining items are listed in the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The local Overleaf project is in `docs/final-report/`, a Git-ignored folder. The executed course notebook is `Final_Project.ipynb`. The Overleaf ZIP contains report sources only, not the complete course-submission archive.
+
 
 - data/: raw sources and processed datasets; not tracked by Git.
 - models/: downloaded model cache; not tracked by Git.
 - runs/: checkpoints, TensorBoard logs, adapters, and run summaries; not tracked by Git.
 - docs/research/: bilingual project overview and research notes.
 
-The main Python files are under src/healthcpt/: cli.py connects commands to their functions, medquad.py prepares the MedQuAD splits, medical_data.py downloads and cleans CPT sources, cpt.py trains the model, and export_hf.py merges a completed adapter. checkpoint_files.py copies and checks the weight files; verify_hf.py provides the optional Transformers text/image check; evaluate_qa.py compares text answers against a reference file.
+Read the Python files by responsibility; all live under `src/healthcpt/`:
 
-The Qwen3.5-2B CPT run is complete, and its full Hugging Face-format export has passed a basic Transformers text/image check. See the [research overview](docs/research/README.en.md) for the run settings, metrics, and limits. The repository provides data preparation, CPT, Hugging Face export, and a text QA evaluation script; SFT training and final evaluation results are still to come. DPO and GRPO remain optional and are not implemented.
+| Step | Files |
+|---|---|
+| Command entry | `cli.py` |
+| Data download and preparation | `medquad.py`, `medical_data.py` |
+| Training | `cpt.py`, `sft.py`, `lstm_baseline.py` |
+| Weight merging and file checks | `export_hf.py`, `checkpoint_files.py` |
+| Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py`, `evaluate_mmlu.py` |
+| Shared QA sampling and metrics | `qa_metrics.py` |
+
+CPT, SFT, and the LSTM baseline are trained. The latest Base/CPT+SFT QA metrics, with corrected EOS stopping, are in `qa_eval_cpt_sft_test_200_eosfix_wsl`; the run used an RTX 2080 Ti. The earlier RTX 4090 Infra run and CPT-only evaluation are kept for historical stage-wise analysis. LSTM BERTScore and the full MMLU professional_medicine result are also saved under `runs/`. Only 200 of 1,573 QA test questions were evaluated. Human answer review and several course deliverables remain outstanding. See the [research overview](docs/research/README.en.md) and [submission checklist](docs/SUBMISSION_CHECKLIST.md).
+
+## 15. View the final results dashboard
+
+After downloading the final evaluation and training records into `runs/`, run from the project folder:
+
+    python scripts/build_results_dashboard.py --open
+
+This builds `runs/final_results.html` and opens it in your browser. The standalone page works offline, with bilingual, Chinese, and English views plus printing. It uses the EOS-corrected Qwen run `qa_eval_cpt_sft_test_200_eosfix_wsl`, the complete MMLU medicine run, and the final LSTM results. It also reads the CPT/SFT and LSTM training records; no model weights or extra Python packages are required. LSTM uses a separate run on the same checked questions and references, with a different generation budget. The older cached Qwen scores are excluded. Rerun the command to refresh the page after updating the source files. The page lists source paths and SHA-256 hashes.
+
+CPT and SFT loss/accuracy curves use TensorBoard training points cached in `runs/training_curves.json`; LSTM curves use its epoch history. To create or refresh the cache after downloading new TensorBoard logs:
+
+    uv run --no-project --with tensorboard python scripts/extract_training_curves.py
+
+Then run the dashboard command above. The extractor uses TensorBoard in an isolated uv environment; it does not install TensorFlow or change the training environment.
+
+To add LSTM BERTScore without regenerating answers, run in the same PyTorch evaluation environment used for the final Qwen Infra run:
+
+    python src/healthcpt/score_lstm_bertscore.py --dry-run
+    python src/healthcpt/score_lstm_bertscore.py
+
+The script validates the 200 saved answers against the final Qwen questions/references and requires matching BERTScore and Transformers versions. It saves new `metrics.json` and `predictions.jsonl` under `runs/qa_eval_lstm_16epoch_test_200_bertscore/`, preserving the original results. Download that folder locally and rerun the dashboard generator to display the new score. Only the RoBERTa scoring model is needed; Qwen and LSTM weights are not loaded.
+
+## 16. Course submission notebook
+
+Open `Final_Project.ipynb` at the repository root. It includes saved, executed tables and figures, implementation excerpts, data preparation and model execution entry points, metric recomputation, and provenance checks. The notebook uses short English explanations. It complements the source modules and the final Word report.
+
+To rerun the lightweight analysis in Python 3.11 or 3.12:
+
+    python -m pip install -r requirements-notebook.txt
+
+Select that Python kernel in your notebook editor, then Run All. Keep the prepared files under `data/processed/` and the downloaded evaluation/training records under `runs/`, including `training_curves.json` and the LSTM vocabulary. Default execution reads these artifacts and displays results; it does not train, run inference, download models, or require TensorFlow/PyTorch. Saved outputs remain readable when those artifacts are unavailable.
+
+The `RUN_DATA_PREPARATION`, `RUN_TRAINING`, `RUN_EXPORT`, `RUN_INFERENCE`, and `RUN_BERTSCORE` switches are initially false. Enable an operation only in the corresponding environment documented above. Reproduction commands write into `runs/notebook_reproduction/`. Submit the notebook together with the source code, environment files, and the necessary result artifacts; weights can remain separate. Manual answer review, a dedicated explainability analysis, and final team interpretations are not completed by executing this notebook.

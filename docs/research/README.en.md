@@ -1,6 +1,6 @@
 # Medical Question Answering Model: Research and Data Preparation
 
-Updated: 2026-09-28. The submitted proposal remains unchanged. This document records the current experiment plan, v3 data status, and completed CPT stage. See the [简体中文版](README.md).
+Updated: 2026-10-08. The submitted proposal remains unchanged. This document records the plan, completed CPT/SFT experiments, and required foundational baseline. See the [简体中文版](README.md).
 
 ## Project question
 
@@ -9,6 +9,10 @@ We selected Qwen3.5-2B-Base for a small medical question-answering prototype. We
 The main workflow is **Base → CPT → SFT**. Continued pretraining (CPT) lets the model learn from medical text. Supervised fine-tuning (SFT) then teaches it to answer questions. The main comparison is the Base model versus the final CPT+SFT model on the same held-out questions. This measures the overall training pipeline; it cannot isolate how much CPT contributes beyond SFT. That differs from the submitted proposal, which planned to compare CPT+SFT with SFT alone. The final report should explain this change in scope and why it was made.
 
 DPO and GRPO are optional extensions if time, data, and the TensorFlow/Keras toolchain allow. Both would branch from the same SFT checkpoint. DPO needs pairs of preferred and less-preferred answers. GRPO also needs a clear and reliable scoring rule. These datasets, reward methods, and training implementations are not yet defined, so they are not part of the core plan.
+
+Instructor feedback approved at least 10,000 medical text records or QA pairs and requires primary TensorFlow/Keras/KerasHub experiments plus a foundational architecture baseline. We use a forward LSTM language model trained from scratch: Embedding(128) → LSTM(256) → Dense, with a 20,000-word vocabulary and 8,094,240 parameters. It uses the same 12,799 QA training rows and validation split as SFT. The final run used a 50-epoch cap with validation-loss early stopping, completed 16 epochs, and selected epoch 14 as the best checkpoint. It was compared on the same 200 test questions as Base and CPT+SFT. Commands and run records are in the root README and `runs/lstm_qa_50epochs/run.json`.
+
+The LSTM can generate text, but limited training data may lead to repetitive or irrelevant answers. Its word tokenizer differs from Qwen's subword tokenizer, so report word perplexity only within the LSTM vocabulary; cross-model perplexity comparisons and token caps are not equivalent. Model size and Qwen's large pretraining exposure also affect results, so differences cannot be attributed solely to architecture. The current 200-question QA comparison uses text-overlap metrics. The final Qwen BERTScore and inference-resource run and the public MMLU benchmark are complete; manual answer review remains outstanding.
 
 ## What the datasets contain
 
@@ -32,7 +36,7 @@ The v3 CPT training set contains **24,240 text chunks**:
 
 The CPT validation set contains 1,645 chunks: 50 MedlinePlus chunks and 1,595 PMC chunks, from 14 MedlinePlus topics and 60 papers. The MedQuAD SFT training split remains complete.
 
-By a rough whitespace-separated word count, the training text totals about **4.07 million words**: about 2.57 million from PMC (63%), 1.22 million from MedQuAD (30%), and 0.28 million from MedlinePlus (7%). These are not model-token counts. The course instructions call for at least 10,000 text documents. We count each prepared CPT chunk as one training example, giving 24,240. We also report the underlying source-document IDs: 4,401 in the training set, so chunk counts are not mistaken for distinct articles.
+By a rough whitespace-separated word count, the training text totals about **4.07 million words**: about 2.57 million from PMC (63%), 1.22 million from MedQuAD (30%), and 0.28 million from MedlinePlus (7%). These are not model-token counts. Instructor feedback approved a threshold of at least 10,000 medical text records or QA pairs; our 12,799 training pairs meet it. CPT separately has 24,240 training chunks and 4,401 source IDs; chunk and source counts remain distinct.
 
 ## Data flow and evaluation
 
@@ -58,7 +62,7 @@ flowchart LR
 
 The original MedQuAD splits remain unchanged. Separate cleaned evaluation files contain 1,471 validation questions and 1,573 test questions. They remove questions or answers that exactly repeat SFT training content. The current checks cover exact duplicates and some full-answer matches; they do not include a semantic near-duplicate audit, so they cannot guarantee that all knowledge overlap is gone.
 
-The Base and final SFT models should use the same questions, prompt, and generation settings. `evaluate_qa.py` uses the `Question: {question}\nAnswer:` prompt with greedy decoding, and reports normalized exact match, token F1, ROUGE-L, and per-question answers for manual review of relevance, missing information, and unsupported claims. Text-overlap metrics do not establish medical correctness; the human-scoring rubric is still to be defined, and there is no clinical validation.
+The Base, CPT, and CPT+SFT evaluations use the same sampled questions and Q/A prompt. The current Base/CPT+SFT run recognizes both end markers; the historical CPT-only run used the earlier stop configuration. `evaluate_qa.py` uses the `Question: {question}\nAnswer:` prompt with greedy decoding, and reports normalized exact match, token F1, ROUGE-L, and per-question answers for manual review of relevance, missing information, and unsupported claims. Text-overlap metrics do not establish medical correctness; the human-scoring rubric is still to be defined, and there is no clinical validation.
 
 ## Current status
 
@@ -67,18 +71,51 @@ The Base and final SFT models should use the same questions, prompt, and generat
 - On 2026-09-28, one epoch of Qwen3.5-2B-Base CPT completed with 24,240 training text examples and 1,645 validation examples, sequence length 512, batch size 1, LoRA rank 8, and peak learning rate 1e-4. Training loss was 0.920 and validation loss was 1.229; token accuracy was 0.570 and 0.538, respectively. These are next-token language-model metrics, not QA accuracy.
 - The full Hugging Face-format export is at `runs/qwen3_5_2b_cpt_full_1epoch/hf_export_multimodal`. It uses Base snapshot `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`, merges 12 text q/v projection weights, and preserves all 297 vision weights unchanged. The run folder keeps the CPT adapter and `run.json`; the export folder contains `export_report.json` and `inference_check.json`.
 - Transformers successfully loaded all 617 weights and completed text and image inference. The image check used a generated solid-color PNG, so it only confirms that the model loads and accepts image input. Real-image capability comparisons and manual QA review remain undone.
-- `evaluate_qa.py` compared Base and CPT on a seeded sample of 200 questions from the 1,471-row `qa_validation_eval.jsonl`, using the `Question: {question}\nAnswer:` prompt, greedy decoding, and a 128-token generation limit:
+- SFT completed one epoch on the server with 12,799 QA training pairs and 1,471 validation pairs, sequence length 512, batch size 1, LoRA rank 8, learning rate 2e-5, and 639 warmup steps. Validation loss was 0.6134 and token accuracy was 0.7025; training loss was 0.5879 and token accuracy was 0.6993. These are next-token metrics on concatenated QA text, not medical-answer accuracy. Long examples may be truncated at 512 tokens; the rate has not been measured.
+- The full Hugging Face SFT export is at `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal`. It merges the cumulative CPT+SFT LoRA update into the original Base Safetensors model and preserves the original vision weights.
+- `evaluate_qa.py` used the same prompt, greedy decoding, a 128-token limit, and seed 5565 for the four Qwen paired evaluations below. The additional LSTM row uses the same 200 test questions and reuses the saved Base answers from the CPT+SFT test run:
 
-  | Model | Normalized exact match | Token F1 | ROUGE-L F1 |
-  |---|---:|---:|---:|
-  | Base | 0.0000 | 0.2499 | 0.1606 |
-  | CPT | 0.0000 | 0.2345 | 0.1639 |
+  | Split | Candidate | Base token F1 | Candidate token F1 | Base ROUGE-L | Candidate ROUGE-L |
+  |---|---|---:|---:|---:|---:|
+  | Validation, n=200 | CPT | 0.2499 | 0.2345 | 0.1606 | 0.1639 |
+  | Validation, n=200 | CPT+SFT | 0.2486 | 0.3421 | 0.1598 | 0.2702 |
+  | Test, n=200 | CPT | 0.2540 | 0.2332 | 0.1582 | 0.1638 |
+  | Test, n=200 | CPT+SFT | 0.2586 | 0.3248 | 0.1600 | 0.2622 |
+  | Test, n=200 | LSTM, cached Base | 0.2586 | 0.2525 | 0.1600 | 0.2067 |
 
-  The results show mixed text-overlap scores and do not establish a clear QA improvement or decline. Manual review is still needed. Per-question predictions and the full summary are on the server in `runs/qa_eval_cpt_validation_500/`; they are not tracked by Git. Keep the test split for the final Base-versus-CPT+SFT comparison.
-- SFT training code and a command are not implemented yet. The next step is to prepare SFT from the 12,799 MedQuAD training pairs and confirm that TensorFlow/KerasHub can continue from the CPT artifact.
+  Normalized exact match was 0 for all listed results, and there were no empty predictions. CPT had lower token F1 and slightly higher ROUGE-L than its paired Base run. CPT+SFT scored higher than its paired Base on both text-overlap metrics in both 200-example samples. These preliminary results do not establish medical correctness. The two test runs used the same file hash, seed, and generation settings, but their Base scores varied slightly; interpret the paired scores within each run rather than treating Base values from different runs as identical. Per-question predictions and JSON summaries are on the server under `runs/qa_eval_*`; they are not tracked by Git.
+
+- The QA table immediately above records earlier run-specific comparisons. The EOS-corrected Base/CPT+SFT results and resource measurements are in `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`; this run used the same test file, seed, prompt, and generation cap on an RTX 2080 Ti. The older RTX 4090 Infra run is retained as historical. CPT-only comes from the older `runs/qa_eval_cpt_test_200/` run, and LSTM BERTScore was calculated later from saved answers, so these are not a fully paired set under one EOS configuration. The earlier cached-Qwen LSTM comparison is also historical. Similarity scores do not establish medical correctness.
+- The final LSTM run used 8,094,240 parameters, a 20,000-word vocabulary, embedding size 128, hidden size 256, sequence length 512, batch size 8, Adam learning rate 1e-3, Dropout 0.2, and early-stopping patience 2 with TensorFlow 2.21.0/Keras 3.15.1. It completed 16 of 50 allowed epochs; the checkpoint with the lowest validation loss was epoch 14. Training, validation, and saving took 1,778.20 seconds (about 29 minutes 38 seconds). The selected checkpoint had validation loss 2.9958, token accuracy 0.5110, corpus-level target-word NLL 2.9100, and word perplexity 18.356. These word-level perplexity values are not directly comparable with Qwen subword metrics.
+- LSTM truncated 657/12,799 training texts (5.13%) and 102/1,471 validation texts (6.93%); unknown-word fractions were 2.20% and 3.62%. The complete saved `model.keras` is 97,164,406 bytes (about 97.2 MB), including optimizer state. FP32 parameter storage alone is about 32.4 MB; distinguish these when reporting deployment size.
+- The LSTM metrics in the old comparison above reuse Qwen predictions from a different run; keep them as historical context. The final LSTM results use the same 200 questions and references as the corrected Qwen run. They are listed in the final QA table below. LSTM averaged 0.1242 seconds per answer and generated 86.115 words under its 128-word cap; Qwen used a 128-subword-token cap, so these generation budgets and throughputs are not equivalent.
+- The test file contains 1,573 rows; only a seed-5565 sample of 200 has been evaluated so far. The full test split has not been run. MedQuAD is public, but this held-out split comes from the same dataset family as training.
+- The full `professional_medicine` test subject was scored: 272 questions with five dev demonstrations (5-shot). `evaluate_mmlu.py` chooses among the next-token probabilities for A/B/C/D; test labels do not enter prompts or training. Report this as a single MMLU subject, not the aggregate benchmark. It measures exam questions rather than patient-answer quality, and pretrained models may have seen public benchmark items. [MMLU data and original implementation](https://github.com/hendrycks/test)
+- `main` is the integrated course pipeline covering CPT, SFT, the LSTM baseline, and evaluation. `runqi/sft-work` is retained for existing server checkouts. The original CPT baseline remains available under tag `cpt-baseline-2026-09-28`. Remaining course deliverables are tracked in the submission checklist.
 - Training targets a Linux GPU server with dependencies managed by `uv`. WSL is not needed to prepare or inspect the data locally.
 
 If DPO or GRPO is attempted later, both should branch independently from the same SFT checkpoint. Define and version the preference data, reward rule, and evaluation set before starting. A higher reward score alone does not prove that answers improved. If the toolchain or data are not ready in time, complete the Base→CPT→SFT workflow.
+
+## Final held-out results (updated 2026-10-08)
+
+The corrected QA comparison uses the same seed-5565 sample of 200 questions from the 1,573-row cleaned test set. Base and CPT+SFT scores below come from the WSL RTX 2080 Ti run. CPT-only and LSTM scores come from their earlier runs; LSTM BERTScore was added afterward with the same RoBERTa scoring hash. The evaluator stops on IDs 248044 (`<|endoftext|>`) and 248046 (`<|im_end|>`).
+
+| Model | Normalized EM | Token F1 | ROUGE-L F1 | BERTScore F1 |
+|---|---:|---:|---:|---:|
+| Base | 0 | 0.2571 | 0.1586 | 0.8382 |
+| CPT | 0 | 0.2332 | 0.1638 | Not measured |
+| CPT+SFT | 0 | 0.3355 | 0.2749 | 0.8676 |
+| LSTM | 0 | 0.2525 | 0.2067 | 0.8253 |
+
+All four runs had zero empty answers. CPT-only results are retained from the earlier stop configuration and are contextual rather than a direct comparison with the corrected Base row. The corrected CPT+SFT pipeline scored higher than Base on all three measured similarity metrics. The missing SFT-only control means the separate contribution of CPT is not measured. Scores compare text with references and do not establish medical correctness.
+
+An audit of the actual KerasHub preprocessing found that all 12,799 SFT examples ended with `<|im_end|>` in their active training targets, including the 1,472 examples that filled the 512-token sequence. In a targeted WSL check after correcting the stop IDs, three inspected questions still generated the full 128-token budget without emitting either end marker; the repeated clinical-trial answer remained. The stop-ID mismatch was real, but did not explain those loops by itself. Per-question finish reasons were not saved, so this run does not establish how often the problem occurs. Retraining, chat-template SFT, and repetition penalties have not been tested here.
+
+On the complete MMLU `professional_medicine` subject with five-shot prompts, Base scored 165/272 (60.66%) and CPT+SFT scored 170/272 (62.50%). The paired outcomes were 149 both correct, 21 CPT+SFT only correct, 16 Base only correct, and 86 both wrong. This is a five-answer difference in one subject and one run.
+
+The EOS-corrected run used an RTX 2080 Ti, batch size 1, and three warm-up requests per model. Base/CPT+SFT mean latency was 2.9805/2.4379 seconds, P95 latency was 3.2475/3.2186 seconds, generation throughput was 42.7740/43.0036 token IDs per second, and peak allocated memory was 4259.00/4259.38 MiB. CPT+SFT answers were shorter on average (104.81 versus 127.45 token IDs), so these timings do not establish a speed improvement. The earlier RTX 4090 resource measurements used a different stop configuration and hardware; the runs are not directly compared. LSTM latency and word count use a different output unit and are not a direct speed comparison.
+
+Two selected three-model answer comparisons are included in the local report: inheritance (source line 823) and childhood ALL treatment (line 7). They illustrate a correct central fact after CPT+SFT, an unsupported treatment statement, and LSTM topic drift. They do not replace a systematic human review.
 
 ## Recommended reading
 

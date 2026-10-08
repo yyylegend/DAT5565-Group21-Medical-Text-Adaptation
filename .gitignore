@@ -14,3 +14,7 @@ runs/
 /docs/requirements/
 # The submitted proposal contains group members' student IDs.
 /docs/proposal/
+# Keep Overleaf sources and generated report packages local for now.
+/docs/final-report/
+# Keep personal report-writing notes out of Git.
+/docs/report-notes-memo.md

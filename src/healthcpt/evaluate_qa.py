@@ -40,6 +40,19 @@ def load_model(model_dir: Path, model_class):
     return model
 
 
+def generation_eos_token_ids(tokenizer) -> list[int]:
+    """Stop on both the tokenizer EOS and Qwen3.5's assistant-turn marker."""
+    token_ids = (
+        tokenizer.eos_token_id,
+        tokenizer.convert_tokens_to_ids("<|im_end|>"),
+    )
+    return list(
+        dict.fromkeys(
+            int(token_id) for token_id in token_ids if token_id is not None
+        )
+    )
+
+
 def generate_answers(
     model_dir: Path,
     model_name: str,
@@ -59,6 +72,7 @@ def generate_answers(
     load_started = perf_counter()
     model = load_model(model_dir, model_class)
     model.to(device).eval()
+    eos_token_ids = generation_eos_token_ids(processor.tokenizer)
     if device == "cuda":
         torch.cuda.synchronize(device)
     model_load_seconds = perf_counter() - load_started
@@ -79,6 +93,7 @@ def generate_answers(
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
                 use_cache=True,
+                eos_token_id=eos_token_ids,
             )
         if device == "cuda":
             torch.cuda.synchronize(device)
@@ -333,6 +348,7 @@ def main() -> None:
         "prompt_template": "Question: {question}\nAnswer:",
         "generation": {
             "max_new_tokens": args.max_new_tokens,
+            "eos_token_ids": generation_eos_token_ids(processor.tokenizer),
             "do_sample": False,
             "use_cache": True,
             "batch_size": 1,

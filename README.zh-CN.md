@@ -18,7 +18,7 @@
     git switch runqi/sft-work
     git pull --ff-only
 
-最终自动评测已记录：Base、CPT、CPT+SFT 和 LSTM 使用同一批固定种子的 200 道 QA 测试题；最新 Infra 评测包含 BERTScore 和 Qwen 推理资源；完整的 MMLU professional_medicine 272 题也已完成。1,573 道 QA 测试题尚未全量评测，人工抽查仍待完成。当前报告是 LaTeX 初稿；课程要求 Word 报告，可解释性、交叉验证、部署说明、10 分钟展示视频及团队调查等交付项也要跟进。详见[提交清单](docs/SUBMISSION_CHECKLIST.md)。DPO、GRPO 尚未实现。
+最终自动评测已记录：Base、CPT、CPT+SFT 和 LSTM 使用同一批固定种子的 200 道 QA 测试题；完整的 MMLU professional_medicine 272 题也已完成。Base/CPT+SFT 的 EOS 修正版在 `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`，使用 RTX 2080 Ti；早期 RTX 4090 Infra 运行保留作历史记录。EOS 修正后，部分回答仍重复并达到 128-token 上限。1,573 道 QA 测试题尚未全量评测，人工抽查仍待完成。报告已按提交稿修订并在本地编译为 PDF；课程要求 Word 报告，可解释性、交叉验证、部署说明、10 分钟展示视频及团队调查等交付项也要跟进。详见[提交清单](docs/SUBMISSION_CHECKLIST.md)。DPO、GRPO 尚未实现。
 
 TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>`；Qwen 图文检查和问答评测仍在已有 PyTorch/Transformers 环境运行 `python src/healthcpt/...`。旧的 `cpt-pilot` 和 LSTM 模块命令继续可用。
 
@@ -266,11 +266,11 @@ MedQuAD 上游压缩包可能变化；如果需要复现统计数字，请对照
       --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
       --candidate-name CPT+SFT \
       --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
-      --output-dir runs/qa_eval_cpt_sft_test_200_infra \
+      --output-dir runs/qa_eval_cpt_sft_test_200_eosfix_wsl \
       --limit 200 --seed 5565 --max-new-tokens 128 \
       --warmup-questions 3 --bertscore
 
-单题延迟不含模型加载时间，包含提示词处理、生成和解码；生成速度只按生成阶段计算。显存来自 PyTorch CUDA 分配器的统计；可以用 `nvidia-smi` 另行核对整张卡的占用。比较时保持 GPU、模型文件、题目和生成设置一致。正式跑 200 题前，先把命令中的 `--limit 200` 改为 `--limit 5`，并换一个输出目录，确认 BERTScore 能在当前 Transformers 环境正常加载。
+评测同时把 tokenizer EOS 和 Qwen3.5 assistant-turn 标记 `<|im_end|>` 设为停止 token。EOS 修正版的 WSL 结果保存在 `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`。单题延迟不含模型加载时间，包含提示词处理、生成和解码；生成速度只按生成阶段计算。显存来自 PyTorch CUDA 分配器的统计；可以用 `nvidia-smi` 另行核对整张卡的占用。比较时保持 GPU、模型文件、题目和生成设置一致。正式跑 200 题前，先把命令中的 `--limit 200` 改为 `--limit 5`，并换一个输出目录，确认 BERTScore 能在当前 Transformers 环境正常加载。
 
 ## 11. 运行 SFT
 
@@ -378,7 +378,7 @@ Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
 | Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py`、`evaluate_mmlu.py` |
 | 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
-CPT、SFT 和 LSTM 基线均已训练。最终 QA 对比、LSTM BERTScore、Qwen 推理资源指标及 MMLU professional_medicine 完整科目结果已保存在 `runs/`。最新 Base/CPT+SFT 指标以 `qa_eval_cpt_sft_test_200_infra` 为准；CPT-only 旧评测保留用于阶段分析。QA 只评测了 1,573 题中的 200 题，人工答案审查仍未完成。目前的报告为 LaTeX 初稿，另有课程交付项待完成。详见[研究概览](docs/research/README.md)、[提交清单](docs/SUBMISSION_CHECKLIST.md)。
+CPT、SFT 和 LSTM 基线均已训练。EOS 修正后的 Base/CPT+SFT QA 指标在 `qa_eval_cpt_sft_test_200_eosfix_wsl`，运行环境为 RTX 2080 Ti；早期 RTX 4090 Infra 及 CPT-only 结果保留作历史阶段分析。LSTM BERTScore 和 MMLU professional_medicine 完整科目结果也在 `runs/`。QA 只评测了 1,573 题中的 200 题，人工答案审查仍未完成。部分 CPT+SFT 回答在 EOS 修正后仍重复并达到生成上限。报告已按提交稿修订并在本地编译为 PDF，另有课程交付项待完成。详见[研究概览](docs/research/README.md)、[提交清单](docs/SUBMISSION_CHECKLIST.md)。
 
 ## 15. 一键展示最终评测结果
 
@@ -386,7 +386,7 @@ CPT、SFT 和 LSTM 基线均已训练。最终 QA 对比、LSTM BERTScore、Qwen
 
     python scripts/build_results_dashboard.py --open
 
-命令生成 `runs/final_results.html` 并用浏览器打开。页面可离线查看，支持中英对照、中文、英文和打印。Qwen 问答统一使用最新的 `qa_eval_cpt_sft_test_200_infra`，另展示完整 MMLU 医学子集和最终 LSTM 结果，并读取 CPT/SFT、LSTM 训练记录；不需要模型权重或额外 Python 包。LSTM 来自独立运行，已核对同一批题目和参考答案，但生成长度预算不同；旧缓存 Qwen 分数不用于本页。源文件更新后重新运行即可刷新，页面列出来源路径和 SHA-256。
+命令生成 `runs/final_results.html` 并用浏览器打开。页面可离线查看，支持中英对照、中文、英文和打印。Qwen 问答使用 EOS 修正版 `qa_eval_cpt_sft_test_200_eosfix_wsl`，另展示完整 MMLU 医学子集和最终 LSTM 结果，并读取 CPT/SFT、LSTM 训练记录；不需要模型权重或额外 Python 包。LSTM 来自独立运行，已核对同一批题目和参考答案，但生成长度预算不同；旧缓存 Qwen 分数不用于本页。源文件更新后重新运行即可刷新，页面列出来源路径和 SHA-256。
 
 CPT、SFT 的 loss/accuracy 曲线读取 TensorBoard 训练采样点，缓存为 `runs/training_curves.json`；LSTM 曲线读取逐轮历史。首次生成缓存，或下载新的 TensorBoard 日志后，运行：
 

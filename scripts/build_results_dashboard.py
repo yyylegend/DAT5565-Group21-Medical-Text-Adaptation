@@ -19,7 +19,7 @@ def read_rows(path):
 
 def build(output):
     sources = {
-        "qa": "runs/qa_eval_cpt_sft_test_200_infra/metrics.json",
+        "qa": "runs/qa_eval_cpt_sft_test_200_eosfix_wsl/metrics.json",
         "mmlu": "runs/mmlu_professional_medicine_5shot/metrics.json",
         "lstm_eval": "runs/qa_eval_lstm_16epoch_test_200/metrics.json",
         "lstm_train": "runs/lstm_qa_50epochs/run.json",
@@ -34,16 +34,19 @@ def build(output):
         original_path = ROOT / "runs/qa_eval_lstm_16epoch_test_200/predictions.jsonl"
         if scored["source_predictions_sha256"] != hashlib.sha256(original_path.read_bytes()).hexdigest():
             raise ValueError("LSTM BERTScore belongs to different predictions.")
-        qwen_path = ROOT / sources["qa"]
-        if scored["qwen_metrics_sha256"] != hashlib.sha256(qwen_path.read_bytes()).hexdigest() or scored["bertscore"] != data["qa"]["metrics"]["bertscore"]:
-            raise ValueError("LSTM BERTScore does not match the final Qwen scoring settings.")
+        historical_qwen_path = ROOT / "runs/qa_eval_cpt_sft_test_200_infra/metrics.json"
+        if scored["qwen_metrics_sha256"] != hashlib.sha256(historical_qwen_path.read_bytes()).hexdigest():
+            raise ValueError("LSTM BERTScore provenance does not match its original Qwen run.")
+        if scored["bertscore"] != data["qa"]["metrics"]["bertscore"]:
+            raise ValueError("LSTM BERTScore settings differ from the corrected Qwen run.")
         data["lstm_eval"]["metrics"]["LSTM"]["bertscore_f1"] = scored["metrics"]["LSTM"]["bertscore_f1"]
         sources["lstm_bertscore"] = bertscore_path.relative_to(ROOT).as_posix()
+        sources["lstm_bertscore_qwen_source"] = historical_qwen_path.relative_to(ROOT).as_posix()
     for stage in ("cpt", "sft"):
         for source in data["training_curves"][stage]["sources"]:
             if hashlib.sha256((ROOT / source["path"]).read_bytes()).hexdigest() != source["sha256"]:
                 raise ValueError("TensorBoard logs changed; rerun scripts/extract_training_curves.py.")
-    qa = read_rows(ROOT / "runs/qa_eval_cpt_sft_test_200_infra/predictions.jsonl")
+    qa = read_rows(ROOT / "runs/qa_eval_cpt_sft_test_200_eosfix_wsl/predictions.jsonl")
     lstm = read_rows(ROOT / "runs/qa_eval_lstm_16epoch_test_200/predictions.jsonl")
     if len(qa) != data["qa"]["evaluation_examples"] or len(lstm) != data["lstm_eval"]["evaluation_examples"]:
         raise ValueError("QA prediction row counts do not match the reports.")

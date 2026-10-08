@@ -18,7 +18,7 @@ The installation instructions below clone the active work branch. For an existin
     git switch runqi/sft-work
     git pull --ff-only
 
-The final test evaluations are recorded: Base, CPT, CPT+SFT, and LSTM were compared on the same seeded sample of 200 QA questions; BERTScore and Qwen inference resources were recorded in the final Infra run; and the full 272-question MMLU professional_medicine subject was scored. The full 1,573-question QA test set and systematic human answer review remain outstanding. The current report is a LaTeX first draft; the course requires a Word report, and the required explainability work, cross-validation plan, deployment documentation, presentation, and collaboration survey still need attention. See the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The LaTeX report source is kept locally in Git-ignored `docs/final-report/`. DPO and GRPO were not implemented.
+The final test evaluations are recorded: Base, CPT, CPT+SFT, and LSTM were compared on the same seeded sample of 200 QA questions, and the full 272-question MMLU professional_medicine subject was scored. A corrected-stop Base/CPT+SFT rerun is in `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`; the earlier RTX 4090 Infra run is retained as historical. The full 1,573-question QA test set and systematic human answer review remain outstanding. Some CPT+SFT answers still repeat and reach the 128-token cap after the EOS correction. The report manuscript has been revised for final submission review and compiled locally to PDF; the course requires a Word report, and the required explainability work, cross-validation plan, deployment documentation, presentation, and collaboration survey still need attention. See the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The LaTeX report source is kept locally in Git-ignored `docs/final-report/`. DPO and GRPO were not implemented.
 
 TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 
@@ -266,11 +266,11 @@ For a final Base-versus-CPT+SFT run on the same 200 test questions, the script a
       --candidate-dir runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal \
       --candidate-name CPT+SFT \
       --qa-file data/processed/cpt-medical-v3/qa_test_eval.jsonl \
-      --output-dir runs/qa_eval_cpt_sft_test_200_infra \
+      --output-dir runs/qa_eval_cpt_sft_test_200_eosfix_wsl \
       --limit 200 --seed 5565 --max-new-tokens 128 \
       --warmup-questions 3 --bertscore
 
-The latency summary excludes model loading and includes prompt tokenization, generation, and decoding. Output-token throughput measures generation only. GPU memory is measured with PyTorch's CUDA allocator; use `nvidia-smi` as a separate check of total device use. Keep the same GPU, model files, sample, and generation settings when comparing results. Before the full run, try the command with `--limit 5` and a different output folder to confirm BERTScore loads in the current Transformers environment.
+The evaluator stops on both the tokenizer EOS ID and Qwen3.5's `<|im_end|>` assistant-turn marker. The corrected WSL rerun is saved under `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`. The latency summary excludes model loading and includes prompt tokenization, generation, and decoding. Output-token throughput measures generation only. GPU memory is measured with PyTorch's CUDA allocator; use `nvidia-smi` as a separate check of total device use. Keep the same GPU, model files, sample, and generation settings when comparing results. Before the full run, try the command with `--limit 5` and a different output folder to confirm BERTScore loads in the current Transformers environment.
 
 ## 11. Run SFT
 
@@ -378,7 +378,7 @@ Read the Python files by responsibility; all live under `src/healthcpt/`:
 | Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py`, `evaluate_mmlu.py` |
 | Shared QA sampling and metrics | `qa_metrics.py` |
 
-CPT, SFT, and the LSTM baseline are trained. Final QA comparisons, LSTM BERTScore, Qwen infrastructure measurements, and the full MMLU professional_medicine subject evaluation are saved under `runs/`. The latest Base/CPT+SFT metrics are from `qa_eval_cpt_sft_test_200_infra`; the earlier CPT-only run is kept for stage-wise analysis. Only 200 of 1,573 QA test questions were evaluated. Human answer review and several course deliverables remain outstanding. See the [research overview](docs/research/README.en.md) and [submission checklist](docs/SUBMISSION_CHECKLIST.md).
+CPT, SFT, and the LSTM baseline are trained. The latest Base/CPT+SFT QA metrics, with corrected EOS stopping, are in `qa_eval_cpt_sft_test_200_eosfix_wsl`; the run used an RTX 2080 Ti. The earlier RTX 4090 Infra run and CPT-only evaluation are kept for historical stage-wise analysis. LSTM BERTScore and the full MMLU professional_medicine result are also saved under `runs/`. Only 200 of 1,573 QA test questions were evaluated. Human answer review and several course deliverables remain outstanding. See the [research overview](docs/research/README.en.md) and [submission checklist](docs/SUBMISSION_CHECKLIST.md).
 
 ## 15. View the final results dashboard
 
@@ -386,7 +386,7 @@ After downloading the final evaluation and training records into `runs/`, run fr
 
     python scripts/build_results_dashboard.py --open
 
-This builds `runs/final_results.html` and opens it in your browser. The standalone page works offline, with bilingual, Chinese, and English views plus printing. It uses the latest Qwen `qa_eval_cpt_sft_test_200_infra` results, the complete MMLU medicine run, and the final LSTM results. It also reads the CPT/SFT and LSTM training records; no model weights or extra Python packages are required. LSTM uses a separate run on the same checked questions and references, with a different generation budget. The older cached Qwen scores are excluded. Rerun the command to refresh the page after updating the source files. The page lists source paths and SHA-256 hashes.
+This builds `runs/final_results.html` and opens it in your browser. The standalone page works offline, with bilingual, Chinese, and English views plus printing. It uses the EOS-corrected Qwen run `qa_eval_cpt_sft_test_200_eosfix_wsl`, the complete MMLU medicine run, and the final LSTM results. It also reads the CPT/SFT and LSTM training records; no model weights or extra Python packages are required. LSTM uses a separate run on the same checked questions and references, with a different generation budget. The older cached Qwen scores are excluded. Rerun the command to refresh the page after updating the source files. The page lists source paths and SHA-256 hashes.
 
 CPT and SFT loss/accuracy curves use TensorBoard training points cached in `runs/training_curves.json`; LSTM curves use its epoch history. To create or refresh the cache after downloading new TensorBoard logs:
 

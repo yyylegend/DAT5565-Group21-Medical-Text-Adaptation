@@ -2,7 +2,7 @@
 
 **语言 / Language:** 简体中文 | [English](README.en.md)
 
-更新：2026-10-07。已提交的 proposal 保留原稿；本文件记录实验方案、已完成的 CPT/SFT 和教授要求的基础模型对照。
+更新：2026-10-08。已提交的 proposal 保留原稿；本文件记录实验方案、已完成的 CPT/SFT 和教授要求的基础模型对照。
 
 ## 项目要回答什么
 
@@ -64,7 +64,7 @@ flowchart LR
 
 原始 MedQuAD 划分保持不变。另生成去重后的 `qa_validation_eval.jsonl`（1,471 条）和 `qa_test_eval.jsonl`（1,573 条）。它们去掉了与 SFT 训练重复的问题或答案；当前检查是精确重复和部分完整答案匹配，还没有做语义近重复审查，不能保证所有知识重叠都已消除。
 
-Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。`evaluate_qa.py` 使用 `Question: {question}\nAnswer:` 提示词和贪心生成，输出 normalized exact match、token F1、ROUGE-L 和逐题答案，方便人工抽查相关性、信息遗漏及无依据说法。文字重合指标不代表医学正确；人工评分规则还要确定，也没有临床验证。
+Base、CPT 和 CPT+SFT 评测使用相同的抽样问题和 Q/A 提示词。当前 Base/CPT+SFT 运行同时识别两种结束标记；历史 CPT-only 运行使用旧的停止配置。`evaluate_qa.py` 使用 `Question: {question}\nAnswer:` 提示词和贪心生成，输出 normalized exact match、token F1、ROUGE-L 和逐题答案，方便人工抽查相关性、信息遗漏及无依据说法。文字重合指标不代表医学正确；人工评分规则还要确定，也没有临床验证。
 
 ## 当前进度
 
@@ -87,7 +87,7 @@ Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。
 
   上述结果的 normalized exact match 都为 0，且没有空回答。CPT 的 Token F1 低于同次 Base，ROUGE-L 略高；CPT+SFT 在这两个 200 题样本里的两项文字重合指标都高于同次 Base。这是初步结果，不证明医学回答正确。两次测试运行使用同一文件哈希、seed 和生成设置，但 Base 指标略有波动，因此应按每次运行内部的配对值解读，不要把不同运行的 Base 分数当成完全相同的基线。逐题回答和 JSON 汇总分别保存在服务器 `runs/qa_eval_*` 目录，不纳入 Git。
 
-- 上表中的 QA 是早期逐次运行对比。最终报告以以下新结果表为准：Base/CPT+SFT 指标和推理资源来自 `runs/qa_eval_cpt_sft_test_200_infra/`；CPT-only 来自较早的 `runs/qa_eval_cpt_test_200/`；LSTM BERTScore 后续使用同一 RoBERTa 评分设置补算。旧 LSTM 对比中缓存的 Qwen 指标与最终 Base 运行不同，只作历史记录。文字和语义相似度仍不代表医学正确性。
+- 上表中的 QA 是早期逐次运行对比。EOS 修正后的 Base/CPT+SFT 指标和推理资源来自 `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`；该次运行使用相同测试文件、seed、提示词和生成上限，在 WSL RTX 2080 Ti 上完成。旧 RTX 4090 Infra 运行保留作历史记录。CPT-only 来自较早的 `runs/qa_eval_cpt_test_200/`，LSTM BERTScore 后续从保存回答补算，因此这些结果不是同一套 EOS 配置下的完整配对实验。旧 LSTM 对比中的缓存 Qwen 指标只作历史记录。文字和语义相似度仍不代表医学正确性。
 - 最终 LSTM 训练使用 8,094,240 个参数、20,000 词词表、embedding 128、hidden size 256、sequence length 512、batch size 8、Adam 学习率 1e-3、Dropout 0.2、early-stopping patience 2，环境为 TensorFlow 2.21.0/Keras 3.15.1。最多训练 50 轮，实际完成 16 轮；验证 loss 最低的 checkpoint 是第 14 轮。训练、验证和保存共耗时 1,778.20 秒（约 29 分 38 秒）。该 checkpoint 的验证 loss 为 2.9958、token accuracy 为 0.5110，按有效目标词计算的 NLL 为 2.9100、word perplexity 为 18.356。词级 perplexity 不能与 Qwen 子词指标直接比较。
 - LSTM 训练中有 657/12,799 条（5.13%）文本被截断，验证中为 102/1,471 条（6.93%）；未知词比例分别为 2.20% 和 3.62%。保存的完整 `model.keras` 为 97,164,406 字节（约 97.2 MB），包含训练用优化器状态；仅按 FP32 参数计算的权重约 32.4 MB，两者不能混作部署权重大小。
 - 旧 LSTM 对比复用了另一次 Qwen 运行的预测，其 Base 指标与最终 Infra 运行不同，保留作历史参考。最终 LSTM 指标使用相同的 200 道题和参考答案；BERTScore 也已补算。LSTM 平均每题耗时 0.1242 秒，平均生成 86.115 个词；它的 128 词上限与 Qwen 的 128 子词上限不同，不能直接比较生成速度。
@@ -98,22 +98,26 @@ Base、CPT 和 CPT+SFT 模型使用相同的问题、提示词和生成设置。
 
 如果之后尝试 DPO 或 GRPO，二者都从同一个 SFT 检查点独立分支。开始前要确定偏好数据、奖励规则和评测集；不能只凭奖励分数上涨就断定回答质量提高。若工具链或数据来不及确认，完成 Base→CPT→SFT 主线即可。
 
-## 最终留出集结果（更新于 2026-10-07）
+## 最终留出集结果（更新于 2026-10-08）
 
-最终 QA 对比使用清理后 1,573 道测试题中按 seed 5565 抽取的 200 题。Base/CPT+SFT 数据来自 Infra 运行；CPT 和 LSTM 指标来自各自保存的评测；LSTM BERTScore 后来用相同 RoBERTa 设置补算。
+EOS 修正版 QA 对比使用清理后 1,573 道测试题中按 seed 5565 抽取的 200 题。Base/CPT+SFT 来自 WSL RTX 2080 Ti 运行；CPT-only、LSTM 和 LSTM BERTScore 保留各自较早的结果。停止 ID 为 `248044`（`<|endoftext|>`）和 `248046`（`<|im_end|>`）。
 
 | 模型 | Normalized EM | Token F1 | ROUGE-L F1 | BERTScore F1 |
 |---|---:|---:|---:|---:|
-| Base | 0 | 0.2540 | 0.1582 | 0.8378 |
+| Base | 0 | 0.2571 | 0.1586 | 0.8382 |
 | CPT | 0 | 0.2332 | 0.1638 | 未测量 |
-| CPT+SFT | 0 | 0.3269 | 0.2646 | 0.8611 |
+| CPT+SFT | 0 | 0.3355 | 0.2749 | 0.8676 |
 | LSTM | 0 | 0.2525 | 0.2067 | 0.8253 |
 
-四个模型均无空回答。CPT-only 指标变化不一致；完整 CPT+SFT 流程在三项已测相似度指标上高于 Base。由于没有 SFT-only 对照，无法单独衡量 CPT 的贡献。相似度指标不代表医学正确性。
+四个模型均无空回答。CPT-only 行来自旧的停止配置，仅作阶段参考；没有 SFT-only 对照，无法单独衡量 CPT 的贡献。完整 CPT+SFT 流程在 EOS 修正版运行的三项相似度指标上高于 Base。相似度指标不代表医学正确性。
+
+实际的 KerasHub 预处理审计确认，12,799 条 SFT 训练样例的目标末尾都保留 `<|im_end|>`；其中 1,472 条达到 512-token 序列上限后也仍保留该标记。修正评测停止 ID 后，三道重点检查题仍未生成任何结束标记，并生成到 128-token 上限；临床试验题仍出现短语循环。这说明停止配置错误不是重复输出的唯一原因。评测结果没有逐题保存结束原因，因此尚不能估计全样本重复率；重训、chat-template SFT 和重复惩罚都还没有在本项目验证。
 
 MMLU `professional_medicine` 完整科目使用 5-shot 提示：Base 为 165/272（60.66%），CPT+SFT 为 170/272（62.50%）。两者同对 149 题，只有 CPT+SFT 对 21 题，只有 Base 对 16 题，两者都错 86 题。单次、单科目净增 5 题。
 
-Infra 运行使用 RTX 4090，batch size 1，每个模型预热 3 题。Base/CPT+SFT 平均延迟为 3.5803/3.3414 秒，P95 为 3.6273/3.6378 秒，生成速度为 35.5645/35.6234 tokens/s，峰值已分配显存为 4252.70/4253.08 MiB。CPT+SFT 平均输出更短（119.00 对 127.29 token ID），因此平均延迟不能单独说明提速。LSTM 以词计长度，延迟口径不能与 Qwen 直接比较。
+EOS 修正版运行使用 WSL RTX 2080 Ti、batch size 1，每个模型预热 3 题。Base/CPT+SFT 平均延迟为 2.9805/2.4379 秒，P95 为 3.2475/3.2186 秒，生成速度为 42.7740/43.0036 tokens/s，峰值已分配显存为 4259.00/4259.38 MiB。CPT+SFT 平均输出更短（104.81 对 127.45 token ID）；硬件与旧 RTX 4090 运行不同，且输出长度也不同，因此不据此宣称提速。LSTM 以词计长度，延迟口径不能与 Qwen 直接比较。
+
+本地报告已加入两组三模型回答对照：遗传方式（source line 823）和儿童 ALL 治疗（line 7），分别展示 CPT+SFT 答对核心信息、出现无依据的治疗描述，以及 LSTM 跑题。这些是选取的案例，不能代替系统性人工评审。
 
 ## 推荐阅读
 

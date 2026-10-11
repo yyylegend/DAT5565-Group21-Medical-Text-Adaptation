@@ -2,6 +2,15 @@
 
 **Languages:** English | [简体中文](README.zh-CN.md)
 
+## Reading order for teammates
+
+Use **`main`** for the current project code and documentation. The report is shared separately and is not tracked in this repository.
+
+1. **Report:** start with the project question, data, training workflow, and evaluation results.
+2. **Training code:** read [CPT](src/healthcpt/cpt.py), then [SFT](src/healthcpt/sft.py), and the separate [LSTM baseline](src/healthcpt/lstm_baseline.py).
+3. **Evaluation code:** read [medical QA evaluation](src/healthcpt/evaluate_qa.py), [shared QA metrics](src/healthcpt/qa_metrics.py), and [MMLU scoring](src/healthcpt/evaluate_mmlu.py).
+4. **Notebook:** read [Final_Project.ipynb](Final_Project.ipynb) last as a combined walkthrough of the implementation and saved results. It was assembled after the script-based experiments. Viewing its saved outputs does not require rerunning training.
+
 This README walks through the project from a new Linux GPU server to CPT, SFT, and foundational LSTM experiments. Run these commands in an SSH terminal connected to the server, not in Windows PowerShell. The project plan and data decisions are in the [research overview](docs/research/README.en.md).
 
 ## Which branch to use
@@ -18,7 +27,7 @@ The installation instructions below clone `main`. To move an existing clean chec
     git switch main
     git pull --ff-only
 
-The final test evaluations are recorded: Base, CPT, CPT+SFT, and LSTM were compared on the same seeded sample of 200 QA questions, and the full 272-question MMLU professional_medicine subject was scored. A corrected-stop Base/CPT+SFT rerun is in `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`; the earlier RTX 4090 Infra run is retained as historical. The full 1,573-question QA test set and systematic human answer review remain outstanding. Some CPT+SFT answers still repeat and reach the 128-token cap after the EOS correction. The report manuscript has been revised for final submission review and compiled locally to PDF; the course requires a Word report, and the required explainability work, cross-validation plan, deployment documentation, presentation, and collaboration survey still need attention. See the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The LaTeX report source is kept locally in Git-ignored `docs/final-report/`. DPO and GRPO were not implemented.
+The final test evaluations are recorded: Base, CPT, CPT+SFT, and LSTM were compared on the same seeded sample of 200 QA questions, and the full 272-question MMLU professional_medicine subject was scored. A corrected-stop Base/CPT+SFT rerun is in `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`; the earlier RTX 4090 Infra run is retained as historical. The full 1,573-question QA test set and systematic human answer review remain outstanding. Some CPT+SFT answers still repeat and reach the 128-token cap after the EOS correction. The report manuscript has been revised for final submission review and compiled locally to PDF; the course requires a Word report, and the required explainability work, cross-validation plan, deployment documentation, presentation, and collaboration survey still need attention. The LaTeX report source is kept locally in Git-ignored `docs/final-report/`. DPO and GRPO were not implemented.
 
 TensorFlow training, export, and LSTM evaluation use `uv run healthcpt <command>`. Qwen checks and QA evaluation still use `python src/healthcpt/...` in the existing PyTorch/Transformers environment. The old `cpt-pilot` and LSTM module commands remain supported.
 
@@ -359,7 +368,7 @@ For an execution pilot, add `--limit 10` and choose another output folder. Run t
 The recorded full-subject run compares the highest next-token probabilities for ` A`, ` B`, ` C`, and ` D`; it does not generate long answers. Both models received the same 272 questions and five dev demonstrations, and test labels were not included in prompts. Results and per-question predictions are in `runs/mmlu_professional_medicine_5shot/`. The report should call this “MMLU professional_medicine, 5-shot accuracy,” not the full MMLU score. It measures exam questions, not clinical safety; public benchmark items may also have appeared in pretraining.
 
 ## Project files
-Current course deliverables and remaining items are listed in the [submission checklist](docs/SUBMISSION_CHECKLIST.md). The local Overleaf project is in `docs/final-report/`, a Git-ignored folder. The executed course notebook is `Final_Project.ipynb`. The Overleaf ZIP contains report sources only, not the complete course-submission archive.
+The local Overleaf project is in `docs/final-report/`, a Git-ignored folder. The executed course notebook is `Final_Project.ipynb`. The Overleaf ZIP contains report sources only, not the complete course-submission archive.
 
 
 - data/: raw sources and processed datasets; not tracked by Git.
@@ -378,7 +387,7 @@ Read the Python files by responsibility; all live under `src/healthcpt/`:
 | Qwen checks and evaluation | `verify_hf.py`, `evaluate_qa.py`, `evaluate_mmlu.py` |
 | Shared QA sampling and metrics | `qa_metrics.py` |
 
-CPT, SFT, and the LSTM baseline are trained. The latest Base/CPT+SFT QA metrics, with corrected EOS stopping, are in `qa_eval_cpt_sft_test_200_eosfix_wsl`; the run used an RTX 2080 Ti. The earlier RTX 4090 Infra run and CPT-only evaluation are kept for historical stage-wise analysis. LSTM BERTScore and the full MMLU professional_medicine result are also saved under `runs/`. Only 200 of 1,573 QA test questions were evaluated. Human answer review and several course deliverables remain outstanding. See the [research overview](docs/research/README.en.md) and [submission checklist](docs/SUBMISSION_CHECKLIST.md).
+CPT, SFT, and the LSTM baseline are trained. The latest Base/CPT+SFT QA metrics, with corrected EOS stopping, are in `qa_eval_cpt_sft_test_200_eosfix_wsl`; the run used an RTX 2080 Ti. The earlier RTX 4090 Infra run and CPT-only evaluation are kept for historical stage-wise analysis. LSTM BERTScore and the full MMLU professional_medicine result are also saved under `runs/`. Only 200 of 1,573 QA test questions were evaluated. Human answer review and several course deliverables remain outstanding. See the [research overview](docs/research/README.en.md).
 
 ## 15. View the final results dashboard
 

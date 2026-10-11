@@ -2,6 +2,15 @@
 
 **语言 / Language:** 简体中文 | [English](README.md)
 
+## 队友阅读顺序
+
+请主要查看 **`main` 分支**，这里包含当前项目代码和文档。报告另行分享，不在 Git 仓库中。
+
+1. **先看报告**：了解研究问题、数据、训练流程和评测结果。
+2. **再看主要训练文件**：依次阅读 [CPT](src/healthcpt/cpt.py)、[SFT](src/healthcpt/sft.py)，以及独立的 [LSTM 基线](src/healthcpt/lstm_baseline.py)。
+3. **接着看评测实现**：[医疗问答评测](src/healthcpt/evaluate_qa.py)、[共用 QA 指标](src/healthcpt/qa_metrics.py)和 [MMLU 跑分](src/healthcpt/evaluate_mmlu.py)。
+4. **最后看 Notebook**：[Final_Project.ipynb](Final_Project.ipynb) 汇总实现和保存的结果，是独立脚本实验完成后整理的。直接阅读已保存的输出，无需重新训练。
+
 这份 README 从新服务器开始，带你配置仓库、准备数据，并在 GPU 服务器上用 tmux 运行 CPT、SFT 和 LSTM 基础模型。下面的命令要在 SSH 连接到服务器后的 Linux 终端运行，不是在 Windows PowerShell 中运行。项目研究计划和数据来源见[研究概览](docs/research/README.md)。
 
 ## 当前应该用哪个分支
@@ -18,7 +27,7 @@
     git switch main
     git pull --ff-only
 
-最终自动评测已记录：Base、CPT、CPT+SFT 和 LSTM 使用同一批固定种子的 200 道 QA 测试题；完整的 MMLU professional_medicine 272 题也已完成。Base/CPT+SFT 的 EOS 修正版在 `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`，使用 RTX 2080 Ti；早期 RTX 4090 Infra 运行保留作历史记录。EOS 修正后，部分回答仍重复并达到 128-token 上限。1,573 道 QA 测试题尚未全量评测，人工抽查仍待完成。报告已按提交稿修订并在本地编译为 PDF；课程要求 Word 报告，可解释性、交叉验证、部署说明、10 分钟展示视频及团队调查等交付项也要跟进。详见[提交清单](docs/SUBMISSION_CHECKLIST.md)。DPO、GRPO 尚未实现。
+最终自动评测已记录：Base、CPT、CPT+SFT 和 LSTM 使用同一批固定种子的 200 道 QA 测试题；完整的 MMLU professional_medicine 272 题也已完成。Base/CPT+SFT 的 EOS 修正版在 `runs/qa_eval_cpt_sft_test_200_eosfix_wsl/`，使用 RTX 2080 Ti；早期 RTX 4090 Infra 运行保留作历史记录。EOS 修正后，部分回答仍重复并达到 128-token 上限。1,573 道 QA 测试题尚未全量评测，人工抽查仍待完成。报告已按提交稿修订并在本地编译为 PDF；课程要求 Word 报告，可解释性、交叉验证、部署说明、10 分钟展示视频及团队调查等交付项也要跟进。DPO、GRPO 尚未实现。
 
 TensorFlow 的训练、导出和 LSTM 评测统一用 `uv run healthcpt <命令>`；Qwen 图文检查和问答评测仍在已有 PyTorch/Transformers 环境运行 `python src/healthcpt/...`。旧的 `cpt-pilot` 和 LSTM 模块命令继续可用。
 
@@ -359,7 +368,7 @@ SFT 从已完成的 CPT 运行目录继续训练；脚本会重新加载同一�
 MMLU 完整科目的 GPU 评测已完成：脚本比较 ` A`、` B`、` C`、` D` 四个答案 token 的下一 token 概率，不生成长答案。两模型使用同一组 272 道 test 题和 5 个 dev 示例；test 答案不进入提示词。`runs/mmlu_professional_medicine_5shot/` 保存 accuracy、正确题数、逐题配对结果及设置。报告应标明 `professional_medicine` 和 5-shot 协议；它不是完整 MMLU 总分，也不是临床安全评估。公开题目可能出现在预训练数据中。
 
 ## 仓库里有什么
-当前课程交付物和待办见[提交清单](docs/SUBMISSION_CHECKLIST.md)。Overleaf 源文件保存在本机的 `docs/final-report/`，该目录已加入 Git 忽略；已执行的课程 notebook 在根目录 `Final_Project.ipynb`。Overleaf ZIP 只是报告源文件包，不是完整的课程提交压缩包。
+Overleaf 源文件保存在本机的 `docs/final-report/`，该目录已加入 Git 忽略；已执行的课程 notebook 在根目录 `Final_Project.ipynb`。Overleaf ZIP 只是报告源文件包，不是完整的课程提交压缩包。
 
 
 - data/：原始来源和处理后的数据，不纳入 Git。
@@ -378,7 +387,7 @@ Python 代码按下面的职责阅读，所有文件都在 `src/healthcpt/`：
 | Qwen 检查与评测 | `verify_hf.py`、`evaluate_qa.py`、`evaluate_mmlu.py` |
 | 两类模型共用的问答采样与指标 | `qa_metrics.py` |
 
-CPT、SFT 和 LSTM 基线均已训练。EOS 修正后的 Base/CPT+SFT QA 指标在 `qa_eval_cpt_sft_test_200_eosfix_wsl`，运行环境为 RTX 2080 Ti；早期 RTX 4090 Infra 及 CPT-only 结果保留作历史阶段分析。LSTM BERTScore 和 MMLU professional_medicine 完整科目结果也在 `runs/`。QA 只评测了 1,573 题中的 200 题，人工答案审查仍未完成。部分 CPT+SFT 回答在 EOS 修正后仍重复并达到生成上限。报告已按提交稿修订并在本地编译为 PDF，另有课程交付项待完成。详见[研究概览](docs/research/README.md)、[提交清单](docs/SUBMISSION_CHECKLIST.md)。
+CPT、SFT 和 LSTM 基线均已训练。EOS 修正后的 Base/CPT+SFT QA 指标在 `qa_eval_cpt_sft_test_200_eosfix_wsl`，运行环境为 RTX 2080 Ti；早期 RTX 4090 Infra 及 CPT-only 结果保留作历史阶段分析。LSTM BERTScore 和 MMLU professional_medicine 完整科目结果也在 `runs/`。QA 只评测了 1,573 题中的 200 题，人工答案审查仍未完成。部分 CPT+SFT 回答在 EOS 修正后仍重复并达到生成上限。报告已按提交稿修订并在本地编译为 PDF，另有课程交付项待完成。详见[研究概览](docs/research/README.md)。
 
 ## 15. 一键展示最终评测结果
 

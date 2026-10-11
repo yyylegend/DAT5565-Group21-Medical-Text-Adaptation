@@ -18,3 +18,6 @@ runs/
 /docs/final-report/
 # Keep personal report-writing notes out of Git.
 /docs/report-notes-memo.md
+
+# Keep the course submission checklist as a local note.
+/docs/SUBMISSION_CHECKLIST.md

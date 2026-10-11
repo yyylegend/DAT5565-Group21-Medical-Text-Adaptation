@@ -414,6 +414,8 @@ CPT、SFT 的 loss/accuracy 曲线读取 TensorBoard 训练采样点，缓存为
 
 仓库根目录的 `Final_Project.ipynb` 是代码与实验结果的提交入口，已保存执行后的表格与图。内容包括数据准备、真实实现片段、训练和评测入口、指标重算及来源核对，实验最初通过 `src/healthcpt/` 中的独立 Python 脚本开发和运行，之后才整理成这个 Notebook，用简短英文展示实现与保存的结果。它与源码模块、最终 Word 报告一起使用。队友审阅请使用 `main`，可直接查看已保存的输出；重新执行单元格需要另行分享的数据和运行记录。
 
+Notebook 开头区分“阅读保存结果”“重跑分析”和“重跑实验”，提供流程概览及本地、Colab 准备步骤。主要小节说明输入和输出，源码片段标为只读；启动检查会先列出缺失的记录文件。Colab 步骤已写明，尚未在真实 Colab runtime 中完成全流程验证。
+
 若要重新执行轻量分析，在 Python 3.11 或 3.12 环境安装：
 
     python -m pip install -r requirements-notebook.txt

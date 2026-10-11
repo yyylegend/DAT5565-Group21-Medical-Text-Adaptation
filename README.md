@@ -414,6 +414,8 @@ The script validates the 200 saved answers against the final Qwen questions/refe
 
 Open `Final_Project.ipynb` at the repository root. It includes saved, executed tables and figures, implementation excerpts, data preparation and model execution entry points, metric recomputation, and provenance checks. The experiments were developed and run as separate Python scripts under `src/healthcpt/`. The notebook was assembled afterward to present those implementations and their saved outputs with short English explanations. It complements the source modules and the final Word report. For team review, use `main` and read the saved notebook outputs; rerunning the cells requires the separately shared data and run records.
 
+The notebook starts with three modes (read saved outputs, rerun analysis, or rerun experiments), a workflow overview, and setup instructions for local review and Colab. Each main section explains its inputs and outputs. Source excerpts are labeled read-only, and the setup cell lists missing review files before analysis starts. Colab setup is documented; a full Colab runtime execution has not been verified.
+
 To rerun the lightweight analysis in Python 3.11 or 3.12:
 
     python -m pip install -r requirements-notebook.txt

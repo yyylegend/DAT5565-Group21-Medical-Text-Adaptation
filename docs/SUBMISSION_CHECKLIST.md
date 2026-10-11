@@ -1,6 +1,6 @@
 # Course submission checklist
 
-Status updated: October 8, 2026. This checklist separates items present in the repository from items still needed for the course submission.
+Status updated: October 11, 2026. This checklist separates items present in the repository from items still needed for the course submission.
 
 ## Git and folder status
 
@@ -11,19 +11,19 @@ The course implementation, EOS evaluator fix, tests, executed notebook, and curr
 | Item | Current state | Location |
 |---|---|---|
 | Source code and tests | Present; course code is primarily trained with TensorFlow/Keras | `src/`, `tests/` |
-| Executed course notebook | Present with saved tables and plots; review mode does not rerun training | `Final_Project.ipynb` |
+| Executed course notebook | Present with saved tables and plots; opening explains assembly from repository scripts; review mode does not rerun training | `Final_Project.ipynb` |
 | Notebook dependencies | Present | `requirements-notebook.txt` |
 | Training and evaluation records | Present locally; data and model files are excluded from Git | `runs/`, `data/`, `models/` |
 | Research plans and evidence notes | Present; internal working material | `docs/final-report/plan/`, `docs/final-report/refs/` |
 | LaTeX report source | Revised for final submission review; available locally and excluded from Git at the user’s request | local `docs/final-report/` |
 | Overleaf source package | Available locally; contains the report sources and figures only | local `docs/final-report/DAT5565_Group21_Overleaf.zip` |
-| Compiled report PDF | Local 20-page reading copy; source compiled with Tectonic and pages inspected | local `docs/final-report/DAT5565_Group21_Final_Report.pdf` |
+| Compiled report PDF | Local 19-page reading copy; source compiled with Tectonic and pages inspected | local `docs/final-report/DAT5565_Group21_Final_Report.pdf` |
 | Readable report preview | Available locally; generated from the LaTeX source | local `docs/final-report/report-preview.html` |
 | Result dashboard | Present; reads saved run records | `runs/final_results.html` |
 
 ## Still required or unverified
 
-- **Word report:** The course asks for a Word document of at least five pages. The LaTeX source now compiles locally into a reviewed 20-page PDF, including the cover, references, and appendices. Conversion to Word and its final pagination remain incomplete. The local build does not verify Overleaf compilation.
+- **Word report:** The course asks for a Word document of at least five pages. The LaTeX source now compiles locally into a reviewed 19-page PDF, including the cover, references, and appendices. Conversion to Word and its final pagination remain incomplete. The local build does not verify Overleaf compilation.
 - **Human answer review:** The report includes two selected Base/CPT+SFT/LSTM answer comparisons (source lines 823 and 7); these are illustrative. A documented review of a fixed sample for relevance, missing key information, repetition, and unsupported claims remains to be completed by the team.
 - **Explainability:** The course instructions require an explainable-AI component. Training curves and example answers provide diagnostics but do not complete a dedicated explainability analysis.
 - **Cross-validation:** The course instructions include cross-validation. The experiments use holdout validation and test splits; k-fold cross-validation was not run. Record the reason or confirm the instructor's accepted alternative.

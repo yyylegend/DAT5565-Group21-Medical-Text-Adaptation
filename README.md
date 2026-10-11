@@ -403,7 +403,7 @@ The script validates the 200 saved answers against the final Qwen questions/refe
 
 ## 16. Course submission notebook
 
-Open `Final_Project.ipynb` at the repository root. It includes saved, executed tables and figures, implementation excerpts, data preparation and model execution entry points, metric recomputation, and provenance checks. The notebook uses short English explanations. It complements the source modules and the final Word report.
+Open `Final_Project.ipynb` at the repository root. It includes saved, executed tables and figures, implementation excerpts, data preparation and model execution entry points, metric recomputation, and provenance checks. The experiments were developed and run as separate Python scripts under `src/healthcpt/`. The notebook was assembled afterward to present those implementations and their saved outputs with short English explanations. It complements the source modules and the final Word report. For team review, use `main` and read the saved notebook outputs; rerunning the cells requires the separately shared data and run records.
 
 To rerun the lightweight analysis in Python 3.11 or 3.12:
 

@@ -434,3 +434,9 @@ In the CUDA-enabled PyTorch/Transformers environment used for QA inference:
     python scripts/chat_demo.py --share
 
 The model directory defaults to `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal`. The command loads local weights and prints a temporary public Gradio URL. Anyone with that URL can use the demo while the server process is running. Omit `--share` to serve only on localhost; use `--host 0.0.0.0 --port 7860` when accessing it through the cloud platform's port mapping. Run it in tmux if it needs to remain active after disconnecting SSH. This is an independent-question research demo; repetition and unsupported answers can still occur.
+
+To try an experimental repetition penalty:
+
+    python scripts/chat_demo.py --share --repetition-penalty 1.1
+
+The default remains 1.0, matching the recorded greedy QA evaluation. In a local diagnostic on three questions, 1.1 removed observed phrase loops from two examples and all three outputs ended with a stop token. It also changed the answer content, including unsupported statements in the ALL research example. This is a small decoding comparison, not a measured gain in answer quality. The examples are saved locally in `runs/chat_decoding_diagnostic/comparisons.json`; no benchmark scores or model weights were changed. Training used English QA pairs, and the demo does not establish Chinese instruction-following or multi-turn conversation quality.

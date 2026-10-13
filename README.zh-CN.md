@@ -434,3 +434,9 @@ Notebook 开头区分“阅读保存结果”“重跑分析”和“重跑实�
     python scripts/chat_demo.py --share
 
 默认读取 `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal` 下的本地权重，并打印临时公开的 Gradio 链接。持有链接的人可在服务器进程运行期间访问。不加 `--share` 时仅监听本机；通过云平台端口映射访问时，可用 `--host 0.0.0.0 --port 7860`。需要断开 SSH 后继续运行时，在 tmux 中启动。它是独立问答的研究演示，仍可能重复或出现无依据回答。
+
+可尝试实验性的重复惩罚：
+
+    python scripts/chat_demo.py --share --repetition-penalty 1.1
+
+默认仍为 1.0，与已有贪心 QA 评测一致。本地三题诊断中，1.1 消除了两例观察到的短语循环，三题都生成了结束标记；但回答内容也改变，ALL 研究题仍有参考答案不支持的陈述。这是小规模解码对照，不是已验证的答案质量提升。对照输出仅保存在本地 `runs/chat_decoding_diagnostic/comparisons.json`，未修改跑分或模型权重。训练使用英文 QA 对，演示不构成中文指令遵循或多轮对话质量验证。

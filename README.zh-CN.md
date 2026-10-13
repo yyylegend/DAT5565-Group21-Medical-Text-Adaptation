@@ -423,3 +423,14 @@ Notebook 开头区分“阅读保存结果”“重跑分析”和“重跑实�
 在 notebook 编辑器中选择该 Python 内核，再 Run All。需要本地 `data/processed/` 数据，以及 `runs/` 中已下载的评测、训练记录、`training_curves.json` 和 LSTM 词表。默认只读取文件、重算指标和画图，不训练、不推理、不下载模型，也不需要 TensorFlow/PyTorch。没有这些文件时，仍可直接阅读 notebook 已保存的输出。
 
 `RUN_DATA_PREPARATION`、`RUN_TRAINING`、`RUN_EXPORT`、`RUN_INFERENCE`、`RUN_BERTSCORE` 均默认关闭。重跑前按上文准备对应环境，再开启所需操作；输出写入 `runs/notebook_reproduction/`。提交 notebook 时同时附上源码、环境文件及必要结果文件，模型权重可以另行保存。执行 notebook 不代表已完成人工答案评审、专门的可解释性分析或团队最终解释。
+
+## 17. 启动医疗问答演示
+
+`scripts/chat_demo.py` 用 Gradio 聊天界面运行合并后的 CPT+SFT 模型。每轮按训练时的 `Question: ...\nAnswer:` 格式独立回答，页面里的历史消息不送入模型。默认使用两个结束标记、贪心生成和 128-token 上限，不改变已有评测设置或分数。
+
+在原 QA 推理使用的 CUDA PyTorch/Transformers 环境中执行：
+
+    python -m pip install gradio==6.0.1
+    python scripts/chat_demo.py --share
+
+默认读取 `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal` 下的本地权重，并打印临时公开的 Gradio 链接。持有链接的人可在服务器进程运行期间访问。不加 `--share` 时仅监听本机；通过云平台端口映射访问时，可用 `--host 0.0.0.0 --port 7860`。需要断开 SSH 后继续运行时，在 tmux 中启动。它是独立问答的研究演示，仍可能重复或出现无依据回答。

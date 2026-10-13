@@ -423,3 +423,14 @@ To rerun the lightweight analysis in Python 3.11 or 3.12:
 Select that Python kernel in your notebook editor, then Run All. Keep the prepared files under `data/processed/` and the downloaded evaluation/training records under `runs/`, including `training_curves.json` and the LSTM vocabulary. Default execution reads these artifacts and displays results; it does not train, run inference, download models, or require TensorFlow/PyTorch. Saved outputs remain readable when those artifacts are unavailable.
 
 The `RUN_DATA_PREPARATION`, `RUN_TRAINING`, `RUN_EXPORT`, `RUN_INFERENCE`, and `RUN_BERTSCORE` switches are initially false. Enable an operation only in the corresponding environment documented above. Reproduction commands write into `runs/notebook_reproduction/`. Submit the notebook together with the source code, environment files, and the necessary result artifacts; weights can remain separate. Manual answer review, a dedicated explainability analysis, and final team interpretations are not completed by executing this notebook.
+
+## 17. Run a medical QA demo
+
+`scripts/chat_demo.py` serves the merged CPT+SFT export in a Gradio chat interface. Each question is answered independently using the training format `Question: ...\nAnswer:`; displayed chat history is not passed to the model. The demo uses the evaluator's two stop markers, greedy decoding, and a default 128-token output cap. It does not change the recorded evaluation settings or scores.
+
+In the CUDA-enabled PyTorch/Transformers environment used for QA inference:
+
+    python -m pip install gradio==6.0.1
+    python scripts/chat_demo.py --share
+
+The model directory defaults to `runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal`. The command loads local weights and prints a temporary public Gradio URL. Anyone with that URL can use the demo while the server process is running. Omit `--share` to serve only on localhost; use `--host 0.0.0.0 --port 7860` when accessing it through the cloud platform's port mapping. Run it in tmux if it needs to remain active after disconnecting SSH. This is an independent-question research demo; repetition and unsupported answers can still occur.

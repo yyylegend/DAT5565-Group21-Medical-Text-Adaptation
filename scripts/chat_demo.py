@@ -13,7 +13,10 @@ from healthcpt.evaluate_qa import generation_eos_token_ids, load_model
 def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float = 1.0):
     import gradio as gr
     import torch
-    from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+    from transformers import (
+        AutoProcessor, LogitsProcessorList, Qwen3_5ForConditionalGeneration,
+        RepetitionPenaltyLogitsProcessor,
+    )
 
     if not torch.cuda.is_available():
         raise RuntimeError("This demo needs the CUDA-enabled inference environment.")
@@ -21,7 +24,7 @@ def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float =
     model = load_model(model_dir, Qwen3_5ForConditionalGeneration).to("cuda").eval()
     stop_ids = generation_eos_token_ids(processor.tokenizer)
     print(
-        f"Loaded {model_dir}; stop IDs: {stop_ids}; repetition penalty: {repetition_penalty}",
+        f"Loaded {model_dir}; stop IDs: {stop_ids}; answer-only repetition penalty: {repetition_penalty}",
         flush=True,
     )
 
@@ -32,6 +35,12 @@ def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float =
             return "Please enter a question."
         prompt = f"Question: {question}\nAnswer:"
         inputs = processor(text=[prompt], return_tensors="pt").to("cuda")
+        prompt_length = inputs["input_ids"].shape[1]
+        processors = LogitsProcessorList()
+        if repetition_penalty != 1.0:
+            processors.append(RepetitionPenaltyLogitsProcessor(
+                repetition_penalty, prompt_ignore_length=prompt_length,
+            ))
         with torch.inference_mode():
             output = model.generate(
                 **inputs,
@@ -39,12 +48,17 @@ def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float =
                 do_sample=False,
                 use_cache=True,
                 eos_token_id=stop_ids,
-                repetition_penalty=repetition_penalty,
+                repetition_penalty=1.0,
+                logits_processor=processors,
             )
+        answer_tokens = output[0, prompt_length:]
         answer = processor.tokenizer.decode(
-            output[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True,
+            answer_tokens, skip_special_tokens=True,
         ).strip()
-        return answer or "The model returned no answer."
+        if not answer:
+            print(f"No visible answer; generated token IDs: {answer_tokens.tolist()}", flush=True)
+            return "The model ended without a text answer. Try a clearly phrased English medical question."
+        return answer
 
     demo = gr.ChatInterface(
         fn=respond,
@@ -52,7 +66,7 @@ def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float =
         description=(
             "Course research demo. Each question is answered independently; "
             "training used English medical QA and earlier messages are not used as context. "
-            f"Repetition penalty: {repetition_penalty:g} (1 = original decoding). "
+            f"Answer-only repetition penalty: {repetition_penalty:g} (1 = original decoding). "
             "Answers may repeat or contain "
             "unsupported information. Not for clinical decisions."
         ),
@@ -71,7 +85,7 @@ def main():
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument(
         "--repetition-penalty", type=float, default=1.0,
-        help="Experimental repetition penalty; 1.0 retains the original evaluation decoding.",
+        help="Experimental penalty on generated answer tokens only; 1.0 retains original decoding.",
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7860)

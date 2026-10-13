@@ -426,7 +426,7 @@ Notebook 开头区分“阅读保存结果”“重跑分析”和“重跑实�
 
 ## 17. 启动医疗问答演示
 
-`scripts/chat_demo.py` 用 Gradio 聊天界面运行合并后的 CPT+SFT 模型。每轮按训练时的 `Question: ...\nAnswer:` 格式独立回答，页面里的历史消息不送入模型。默认使用两个结束标记、贪心生成和 128-token 上限，不改变已有评测设置或分数。
+`scripts/chat_demo.py` 用 Gradio 聊天界面运行合并后的 CPT+SFT 模型。每轮按训练时的 `Question: ...\nAnswer:` 格式独立回答，页面里的历史消息不送入模型。保留两个结束标记，默认输出上限提高为 1,024 token，采用温度 0.7、top-p 0.95 的采样；不截断输入提示词，也不另加 top-k 过滤。这些演示设置不改变已有评测设置或分数。
 
 在原 QA 推理使用的 CUDA PyTorch/Transformers 环境中执行：
 
@@ -439,4 +439,10 @@ Notebook 开头区分“阅读保存结果”“重跑分析”和“重跑实�
 
     python scripts/chat_demo.py --share --repetition-penalty 1.1
 
-默认仍为 1.0，与已有贪心 QA 评测一致。可选惩罚现在只作用于已生成的回答 token，排除提示词。之前的整段惩罚虽然减少循环，却使一道中文题只生成结束标记。改为仅回答部分的 1.1 后，本地三题均产生可见回答，未出现原先观察到的短语循环；英文 ALL 回答仍达到生成长度上限。这是小规模解码对照，不是已验证的医学正确性提升。记录保存在本地 `runs/chat_decoding_diagnostic/`，包括 `generated_only_penalty.json`，未修改跑分或模型权重。训练使用英文 QA 对，演示不构成中文指令遵循或多轮对话质量验证。
+重复惩罚默认仍为 1.0（关闭），但演示的长度和采样默认值已与原贪心 QA 评测不同。可选惩罚现在只作用于已生成的回答 token，排除提示词。之前的整段惩罚虽然减少循环，却使一道中文题只生成结束标记。改为仅回答部分的 1.1 后，本地三题均产生可见回答，未出现原先观察到的短语循环；英文 ALL 回答仍达到生成长度上限。这是小规模解码对照，不是已验证的医学正确性提升。记录保存在本地 `runs/chat_decoding_diagnostic/`，包括 `generated_only_penalty.json`，未修改跑分或模型权重。训练使用英文 QA 对，演示不构成中文指令遵循或多轮对话质量验证。
+
+更宽松的生成设置可用：
+
+    python scripts/chat_demo.py --share --max-new-tokens 2048 --temperature 0.8 --top-p 1.0 --repetition-penalty 1.05
+
+`--temperature 0` 使用贪心生成。复现之前的演示生成设置可用 `--max-new-tokens 128 --temperature 0 --repetition-penalty 1.0`。长度参数是上限，不是必须生成的字数；结束标记仍可让回答提前结束。回答更长或更多样不代表更准确。共享 GPU 上的请求仍按顺序处理。

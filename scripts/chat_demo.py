@@ -10,7 +10,10 @@ sys.path.insert(0, str(ROOT / "src"))
 from healthcpt.evaluate_qa import generation_eos_token_ids, load_model
 
 
-def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float = 1.0):
+def build_demo(
+    model_dir: Path, max_new_tokens: int, repetition_penalty: float = 1.0,
+    temperature: float = 0.7, top_p: float = 0.95,
+):
     import gradio as gr
     import torch
     from transformers import (
@@ -24,7 +27,9 @@ def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float =
     model = load_model(model_dir, Qwen3_5ForConditionalGeneration).to("cuda").eval()
     stop_ids = generation_eos_token_ids(processor.tokenizer)
     print(
-        f"Loaded {model_dir}; stop IDs: {stop_ids}; answer-only repetition penalty: {repetition_penalty}",
+        f"Loaded {model_dir}; stop IDs: {stop_ids}; max answer tokens: {max_new_tokens}; "
+        f"temperature: {temperature}; top-p: {top_p}; "
+        f"answer-only repetition penalty: {repetition_penalty}",
         flush=True,
     )
 
@@ -41,15 +46,19 @@ def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float =
             processors.append(RepetitionPenaltyLogitsProcessor(
                 repetition_penalty, prompt_ignore_length=prompt_length,
             ))
+        sampling = {}
+        if temperature > 0:
+            sampling = {"temperature": temperature, "top_p": top_p, "top_k": 0}
         with torch.inference_mode():
             output = model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
-                do_sample=False,
+                do_sample=temperature > 0,
                 use_cache=True,
                 eos_token_id=stop_ids,
                 repetition_penalty=1.0,
                 logits_processor=processors,
+                **sampling,
             )
         answer_tokens = output[0, prompt_length:]
         answer = processor.tokenizer.decode(
@@ -66,7 +75,9 @@ def build_demo(model_dir: Path, max_new_tokens: int, repetition_penalty: float =
         description=(
             "Course research demo. Each question is answered independently; "
             "training used English medical QA and earlier messages are not used as context. "
-            f"Answer-only repetition penalty: {repetition_penalty:g} (1 = original decoding). "
+            f"Answer limit: {max_new_tokens} tokens. Temperature: {temperature:g} "
+            f"(0 = greedy). Top-p: {top_p:g}. "
+            f"Answer-only repetition penalty: {repetition_penalty:g} (1 = no penalty). "
             "Answers may repeat or contain "
             "unsupported information. Not for clinical decisions."
         ),
@@ -82,16 +93,23 @@ def main():
         "--model-dir", type=Path,
         default=ROOT / "runs/qwen3_5_2b_sft_full_1epoch/hf_export_multimodal",
     )
-    parser.add_argument("--max-new-tokens", type=int, default=128)
+    parser.add_argument("--max-new-tokens", type=int, default=1024)
+    parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature; 0 selects greedy decoding.")
+    parser.add_argument("--top-p", type=float, default=0.95, help="Sampling probability mass; 1 disables nucleus filtering.")
     parser.add_argument(
         "--repetition-penalty", type=float, default=1.0,
-        help="Experimental penalty on generated answer tokens only; 1.0 retains original decoding.",
+        help="Experimental penalty on generated answer tokens only; 1.0 disables it.",
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=7860)
     parser.add_argument("--share", action="store_true", help="Create a temporary public Gradio link.")
     args = parser.parse_args()
-    build_demo(args.model_dir.resolve(), args.max_new_tokens, args.repetition_penalty).launch(
+    if args.max_new_tokens <= 0 or args.temperature < 0 or not 0 < args.top_p <= 1:
+        parser.error("Use a positive token limit, temperature >= 0, and 0 < top-p <= 1.")
+    build_demo(
+        args.model_dir.resolve(), args.max_new_tokens, args.repetition_penalty,
+        args.temperature, args.top_p,
+    ).launch(
         server_name=args.host, server_port=args.port, share=args.share,
     )
 

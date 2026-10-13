@@ -426,7 +426,7 @@ The `RUN_DATA_PREPARATION`, `RUN_TRAINING`, `RUN_EXPORT`, `RUN_INFERENCE`, and `
 
 ## 17. Run a medical QA demo
 
-`scripts/chat_demo.py` serves the merged CPT+SFT export in a Gradio chat interface. Each question is answered independently using the training format `Question: ...\nAnswer:`; displayed chat history is not passed to the model. The demo uses the evaluator's two stop markers, greedy decoding, and a default 128-token output cap. It does not change the recorded evaluation settings or scores.
+`scripts/chat_demo.py` serves the merged CPT+SFT export in a Gradio chat interface. Each question is answered independently using the training format `Question: ...\nAnswer:`; displayed chat history is not passed to the model. The demo keeps the evaluator's two stop markers but now defaults to a 1,024-token output cap and sampling with temperature 0.7 and top-p 0.95. It does not truncate prompts or apply a separate top-k filter. These demo settings do not change the recorded evaluation settings or scores.
 
 In the CUDA-enabled PyTorch/Transformers environment used for QA inference:
 
@@ -439,4 +439,10 @@ To try an experimental repetition penalty:
 
     python scripts/chat_demo.py --share --repetition-penalty 1.1
 
-The default remains 1.0, matching the recorded greedy QA evaluation. The optional penalty now applies only to generated answer tokens, excluding the prompt. The earlier all-sequence penalty reduced loops but caused one Chinese question to emit only an end marker. An answer-only 1.1 probe on three questions produced visible answers without the previously observed phrase loops; the English ALL answer still reached the token limit. This is a small decoding comparison, not a measured gain in medical correctness. Records are saved locally in `runs/chat_decoding_diagnostic/`, including `generated_only_penalty.json`; no benchmark scores or weights were changed. Training used English QA pairs, and the demo does not establish Chinese instruction-following or multi-turn conversation quality.
+The repetition penalty defaults to 1.0 (disabled); the demo's length and sampling defaults now differ from the recorded greedy QA evaluation. The optional penalty now applies only to generated answer tokens, excluding the prompt. The earlier all-sequence penalty reduced loops but caused one Chinese question to emit only an end marker. An answer-only 1.1 probe on three questions produced visible answers without the previously observed phrase loops; the English ALL answer still reached the token limit. This is a small decoding comparison, not a measured gain in medical correctness. Records are saved locally in `runs/chat_decoding_diagnostic/`, including `generated_only_penalty.json`; no benchmark scores or weights were changed. Training used English QA pairs, and the demo does not establish Chinese instruction-following or multi-turn conversation quality.
+
+For a more open generation setting, use:
+
+    python scripts/chat_demo.py --share --max-new-tokens 2048 --temperature 0.8 --top-p 1.0 --repetition-penalty 1.05
+
+`--temperature 0` selects greedy decoding. To reproduce the earlier demo generation settings, use `--max-new-tokens 128 --temperature 0 --repetition-penalty 1.0`. A larger token limit is an upper bound, not a minimum answer length; end markers can stop generation earlier. Longer or more varied answers are not necessarily more accurate. Requests remain serialized on the shared GPU.
